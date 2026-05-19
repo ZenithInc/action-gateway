@@ -155,7 +155,7 @@ See [`action-gateway/example.yaml`](action-gateway/example.yaml) and [`action-ga
 
 ## Documentation
 
-The documentation site is published with GitHub Pages:
+The repository includes a GitHub Actions workflow for publishing the VitePress documentation to GitHub Pages. After GitHub Pages is enabled once in the repository settings with **Build and deployment > Source > GitHub Actions**, the site is available at:
 
 ```text
 https://zenithinc.github.io/action-gateway/

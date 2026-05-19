@@ -155,7 +155,7 @@ manifest 格式可以参考 [`action-gateway/example.yaml`](action-gateway/examp
 
 ## 文档
 
-文档站通过 GitHub Pages 发布：
+仓库已经包含把 VitePress 文档发布到 GitHub Pages 的 GitHub Actions workflow。仓库管理员在 Settings 里一次性启用 **Build and deployment > Source > GitHub Actions** 后，文档站地址是：
 
 ```text
 https://zenithinc.github.io/action-gateway/
