@@ -60,7 +60,7 @@ cargo run --release
 
 ```bash
 cd action-gateway
-RPC_TOKEN=change-me \
+export RPC_TOKEN="$(openssl rand -hex 32)"
 GATEWAY_ALLOW_LEGACY_RPC_TOKEN=true \
 docker compose --profile gateway up -d redis action-gateway
 ```

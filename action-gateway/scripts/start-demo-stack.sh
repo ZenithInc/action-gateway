@@ -12,6 +12,7 @@ LOG_DIR="${LOG_DIR:-${ROOT_DIR}/.local/logs}"
 
 GATEWAY_PID_FILE="${STATE_DIR}/action-gateway.pid"
 GATEWAY_LOG="${LOG_DIR}/action-gateway.log"
+TOKEN_FILE="${TOKEN_FILE:-${STATE_DIR}/action-gateway-token}"
 
 ACTION="${1:-start}"
 
@@ -26,6 +27,7 @@ Environment overrides:
   GATEWAY_STORE_FILE         JSON file used for Gateway state.
   ACTION_GATEWAY_MCP_TOKEN   Token used by Codex and the gateway.
   RPC_TOKEN                  Gateway token. Defaults to ACTION_GATEWAY_MCP_TOKEN.
+                            If neither is set, this script creates/reuses .local/run/action-gateway-token.
   STOP_INFRA=1               Also stop Docker Redis on stop.
 USAGE
 }
@@ -255,6 +257,47 @@ ensure_store_file() {
     echo "Created file store: ${GATEWAY_STORE_FILE}"
 }
 
+generate_local_token() {
+    if command -v openssl >/dev/null 2>&1; then
+        openssl rand -hex 32
+        return
+    fi
+
+    if command -v uuidgen >/dev/null 2>&1; then
+        printf 'local-%s-%s\n' "$(uuidgen)" "$(uuidgen)" | tr -d '-'
+        return
+    fi
+
+    printf 'local-%s-%s\n' "$(date +%s)" "$$"
+}
+
+resolve_local_token() {
+    if [[ -n "${ACTION_GATEWAY_MCP_TOKEN:-}" ]]; then
+        echo "${ACTION_GATEWAY_MCP_TOKEN}"
+        return
+    fi
+
+    if [[ -n "${RPC_TOKEN:-}" ]]; then
+        echo "${RPC_TOKEN}"
+        return
+    fi
+
+    if [[ -f "${TOKEN_FILE}" ]]; then
+        cat "${TOKEN_FILE}"
+        return
+    fi
+
+    local token
+    token="$(generate_local_token)"
+    local old_umask
+    old_umask="$(umask)"
+    umask 077
+    printf '%s\n' "${token}" > "${TOKEN_FILE}"
+    umask "${old_umask}"
+    chmod 600 "${TOKEN_FILE}" 2>/dev/null || true
+    echo "${token}"
+}
+
 stop_stack() {
     stop_process "action-gateway" "${GATEWAY_PID_FILE}"
 
@@ -302,7 +345,7 @@ start_gateway() {
             REDIS_URL="${REDIS_URL}" \
             RPC_BIND_ADDR="${RPC_BIND_ADDR}" \
             RPC_TOKEN="${RPC_TOKEN}" \
-            GATEWAY_ALLOW_LEGACY_RPC_TOKEN=true \
+            GATEWAY_ALLOW_LEGACY_RPC_TOKEN="${GATEWAY_ALLOW_LEGACY_RPC_TOKEN:-false}" \
             KUBERNETES_ENABLE_RAW_KUBECTL="${KUBERNETES_ENABLE_RAW_KUBECTL:-false}" \
             cargo run >"${GATEWAY_LOG}" 2>&1 &
         echo "$!" >"${GATEWAY_PID_FILE}"
@@ -391,7 +434,7 @@ fi
 REDIS_PORT="$(choose_redis_port)"
 REDIS_URL="${REDIS_URL:-redis://127.0.0.1:${REDIS_PORT}/}"
 RPC_BIND_ADDR="${MCP_HOST}:${MCP_PORT}"
-ACTION_GATEWAY_MCP_TOKEN="${ACTION_GATEWAY_MCP_TOKEN:-${RPC_TOKEN:-Xbcd20198\$}}"
+ACTION_GATEWAY_MCP_TOKEN="$(resolve_local_token)"
 RPC_TOKEN="${RPC_TOKEN:-${ACTION_GATEWAY_MCP_TOKEN}}"
 GATEWAY_STORE_FILE="${GATEWAY_STORE_FILE:-${STATE_DIR}/gateway-store.json}"
 

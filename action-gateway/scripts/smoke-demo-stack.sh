@@ -9,7 +9,29 @@ set -euo pipefail
 MCP_HOST="${MCP_HOST:-127.0.0.1}"
 MCP_PORT="${MCP_PORT:-8080}"
 MCP_URL="${MCP_URL:-http://${MCP_HOST}:${MCP_PORT}/mcp}"
-ACTION_GATEWAY_MCP_TOKEN="${ACTION_GATEWAY_MCP_TOKEN:-${RPC_TOKEN:-Xbcd20198\$}}"
+TOKEN_FILE="${TOKEN_FILE:-.local/run/action-gateway-token}"
+
+resolve_local_token() {
+    if [[ -n "${ACTION_GATEWAY_MCP_TOKEN:-}" ]]; then
+        echo "${ACTION_GATEWAY_MCP_TOKEN}"
+        return
+    fi
+
+    if [[ -n "${RPC_TOKEN:-}" ]]; then
+        echo "${RPC_TOKEN}"
+        return
+    fi
+
+    if [[ -f "${TOKEN_FILE}" ]]; then
+        cat "${TOKEN_FILE}"
+        return
+    fi
+
+    echo "Missing ACTION_GATEWAY_MCP_TOKEN/RPC_TOKEN and ${TOKEN_FILE} was not found. Start the demo stack first or export a token." >&2
+    exit 1
+}
+
+ACTION_GATEWAY_MCP_TOKEN="$(resolve_local_token)"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT

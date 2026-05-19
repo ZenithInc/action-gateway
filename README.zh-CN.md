@@ -68,6 +68,12 @@ scripts/start-demo-stack.sh
 http://127.0.0.1:8080/mcp
 ```
 
+如果启动 demo 前没有设置 `ACTION_GATEWAY_MCP_TOKEN` 或 `RPC_TOKEN`，脚本会创建本地 token 文件。手动跑 curl 示例前先加载它：
+
+```bash
+export ACTION_GATEWAY_MCP_TOKEN="$(cat .local/run/action-gateway-token)"
+```
+
 检查服务状态：
 
 ```bash
@@ -94,7 +100,7 @@ STOP_INFRA=1 scripts/start-demo-stack.sh stop
 ```bash
 curl -s http://127.0.0.1:8080/mcp \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer Xbcd20198$' \
+  -H "Authorization: Bearer $ACTION_GATEWAY_MCP_TOKEN" \
   -d '{
     "jsonrpc": "2.0",
     "id": 1,
@@ -115,7 +121,7 @@ curl -s http://127.0.0.1:8080/mcp \
 ```bash
 curl -s http://127.0.0.1:8080/mcp \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer Xbcd20198$' \
+  -H "Authorization: Bearer $ACTION_GATEWAY_MCP_TOKEN" \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
 ```
 
@@ -124,7 +130,7 @@ curl -s http://127.0.0.1:8080/mcp \
 ```bash
 curl -s http://127.0.0.1:8080/mcp \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer Xbcd20198$' \
+  -H "Authorization: Bearer $ACTION_GATEWAY_MCP_TOKEN" \
   -d '{
     "jsonrpc": "2.0",
     "id": 3,

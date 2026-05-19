@@ -14,13 +14,13 @@ Supported kinds:
 All manifests use:
 
 ```yaml
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 ```
 
 ## Principal
 
 ```yaml
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: Principal
 metadata:
   name: svc-order-api
@@ -44,7 +44,7 @@ Fields:
 ## Role
 
 ```yaml
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: Role
 metadata:
   name: order-db-reader
@@ -74,7 +74,7 @@ Supported resources:
 ## RoleBinding
 
 ```yaml
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: RoleBinding
 metadata:
   name: svc-order-api-order-db-reader
@@ -88,7 +88,7 @@ spec:
 ## ApiKey
 
 ```yaml
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: ApiKey
 metadata:
   name: svc-order-api-default

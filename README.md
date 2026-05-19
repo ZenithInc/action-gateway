@@ -68,6 +68,12 @@ The default MCP endpoint is:
 http://127.0.0.1:8080/mcp
 ```
 
+If you did not set `ACTION_GATEWAY_MCP_TOKEN` or `RPC_TOKEN` before starting the demo, the script creates a local token file. Load it before running manual curl examples:
+
+```bash
+export ACTION_GATEWAY_MCP_TOKEN="$(cat .local/run/action-gateway-token)"
+```
+
 Check the service:
 
 ```bash
@@ -94,7 +100,7 @@ Initialize an MCP session:
 ```bash
 curl -s http://127.0.0.1:8080/mcp \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer Xbcd20198$' \
+  -H "Authorization: Bearer $ACTION_GATEWAY_MCP_TOKEN" \
   -d '{
     "jsonrpc": "2.0",
     "id": 1,
@@ -115,7 +121,7 @@ List tools:
 ```bash
 curl -s http://127.0.0.1:8080/mcp \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer Xbcd20198$' \
+  -H "Authorization: Bearer $ACTION_GATEWAY_MCP_TOKEN" \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
 ```
 
@@ -124,7 +130,7 @@ Read a demo Redis key:
 ```bash
 curl -s http://127.0.0.1:8080/mcp \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer Xbcd20198$' \
+  -H "Authorization: Bearer $ACTION_GATEWAY_MCP_TOKEN" \
   -d '{
     "jsonrpc": "2.0",
     "id": 3,

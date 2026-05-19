@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-pub const API_VERSION: &str = "gateway.youse.dev/v1";
+pub const API_VERSION: &str = "gateway.zenithinc.dev/v1";
 pub const MANAGED_BY: &str = "agctl";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -621,14 +621,14 @@ mod tests {
     use super::*;
 
     const SAMPLE: &str = r#"
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: Principal
 metadata:
   name: svc-order-api
 spec:
   type: service_account
 ---
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: Role
 metadata:
   name: order-db-reader
@@ -641,7 +641,7 @@ spec:
       resources: ["table"]
       resourceNames: ["orders", "users", "payments"]
 ---
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: RoleBinding
 metadata:
   name: svc-order-api-order-db-reader
@@ -655,7 +655,7 @@ spec:
         let yaml = format!(
             "{SAMPLE}\n---\n{}",
             r#"
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: ApiKey
 metadata:
   name: svc-order-api-default
@@ -682,7 +682,7 @@ spec:
     #[test]
     fn accepts_legacy_project_environment_fields() {
         let yaml = r#"
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: Principal
 metadata:
   name: svc
@@ -691,7 +691,7 @@ spec:
   defaultProject: legacy-project
   defaultEnvironment: legacy-env
 ---
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: Role
 metadata:
   name: reader
@@ -706,7 +706,7 @@ spec:
       resources: ["table"]
       resourceNames: ["orders"]
 ---
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: RoleBinding
 metadata:
   name: svc-reader

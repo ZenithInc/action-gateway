@@ -22,7 +22,7 @@ bearer_token_env_var = "ACTION_GATEWAY_MCP_TOKEN"
 本地 demo：
 
 ```bash
-export ACTION_GATEWAY_MCP_TOKEN='Xbcd20198$'
+export ACTION_GATEWAY_MCP_TOKEN="$(cat .local/run/action-gateway-token)"
 ```
 
 生产环境建议把变量名换成更明确的 secret，例如：

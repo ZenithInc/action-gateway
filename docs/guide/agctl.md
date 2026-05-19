@@ -19,7 +19,7 @@ export GATEWAY_ADMIN_TOKEN="$ACTION_GATEWAY_MCP_TOKEN"
 下面示例创建一个服务账号，并允许它查询 `mysql-main` source 中的 `orders` 表：
 
 ```yaml
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: Principal
 metadata:
   name: svc-order-api
@@ -31,7 +31,7 @@ spec:
     owner: platform
     service: order-api
 ---
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: Role
 metadata:
   name: order-db-reader
@@ -46,7 +46,7 @@ spec:
         - orders
       effect: allow
 ---
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: RoleBinding
 metadata:
   name: svc-order-api-order-db-reader
@@ -54,7 +54,7 @@ spec:
   principal: svc-order-api
   role: order-db-reader
 ---
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: ApiKey
 metadata:
   name: svc-order-api-default

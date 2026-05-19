@@ -113,7 +113,8 @@ scripts/smoke-demo-stack.sh
 Compose 只包含 Redis 和 Gateway：
 
 ```bash
-RPC_TOKEN=change-me GATEWAY_ALLOW_LEGACY_RPC_TOKEN=true docker compose --profile gateway up -d redis action-gateway
+export RPC_TOKEN="$(openssl rand -hex 32)"
+GATEWAY_ALLOW_LEGACY_RPC_TOKEN=true docker compose --profile gateway up -d redis action-gateway
 ```
 
 服务默认监听：
@@ -139,7 +140,7 @@ API key 明文只在创建时返回一次；文件存储中保存 `secretSalt` �
 ```bash
 curl -s http://127.0.0.1:8080/mcp \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer change-me' \
+  -H "Authorization: Bearer $RPC_TOKEN" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"example-agent","version":"0.1.0"}}}'
 ```
 
@@ -148,7 +149,7 @@ curl -s http://127.0.0.1:8080/mcp \
 ```bash
 curl -s http://127.0.0.1:8080/mcp \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer change-me' \
+  -H "Authorization: Bearer $RPC_TOKEN" \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
 ```
 
@@ -157,7 +158,7 @@ curl -s http://127.0.0.1:8080/mcp \
 ```bash
 curl -s http://127.0.0.1:8080/mcp \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer change-me' \
+  -H "Authorization: Bearer $RPC_TOKEN" \
   -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"redis.query_key","arguments":{"key":"demo:user:1","limit":20}}}'
 ```
 
@@ -166,7 +167,7 @@ curl -s http://127.0.0.1:8080/mcp \
 ```bash
 curl -s http://127.0.0.1:8080/mcp \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer change-me' \
+  -H "Authorization: Bearer $RPC_TOKEN" \
   -d '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"logs.query_app_logs","arguments":{"app_name":"billing-api","environment":"prod","keyword":"12.00","limit":20}}}'
 ```
 

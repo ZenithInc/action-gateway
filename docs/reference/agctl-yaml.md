@@ -12,13 +12,13 @@
 所有 manifest 使用同一个 `apiVersion`：
 
 ```yaml
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 ```
 
 ## 通用结构
 
 ```yaml
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: <Kind>
 metadata:
   name: <name>
@@ -31,7 +31,7 @@ spec:
 ## Principal
 
 ```yaml
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: Principal
 metadata:
   name: svc-order-api
@@ -53,7 +53,7 @@ spec:
 ## Role
 
 ```yaml
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: Role
 metadata:
   name: order-db-reader
@@ -86,7 +86,7 @@ spec:
 ## RoleBinding
 
 ```yaml
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: RoleBinding
 metadata:
   name: svc-order-api-order-db-reader
@@ -100,7 +100,7 @@ spec:
 ## ApiKey
 
 ```yaml
-apiVersion: gateway.youse.dev/v1
+apiVersion: gateway.zenithinc.dev/v1
 kind: ApiKey
 metadata:
   name: svc-order-api-default

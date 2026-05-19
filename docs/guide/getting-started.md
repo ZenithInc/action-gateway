@@ -68,10 +68,10 @@ scripts/start-demo-stack.sh status
 
 ## 设置本地 token
 
-demo stack 默认使用 `ACTION_GATEWAY_MCP_TOKEN` 或 `RPC_TOKEN`。如果你没有显式设置，脚本会使用本地默认值：
+demo stack 默认使用 `ACTION_GATEWAY_MCP_TOKEN` 或 `RPC_TOKEN`。如果你没有显式设置，脚本会创建并复用 `.local/run/action-gateway-token`：
 
 ```bash
-export ACTION_GATEWAY_MCP_TOKEN='Xbcd20198$'
+export ACTION_GATEWAY_MCP_TOKEN="$(cat .local/run/action-gateway-token)"
 ```
 
 这个 legacy token 只适合本地 demo。生产环境应使用 Gateway API Key，详见 [使用 agctl 管理权限](/guide/agctl)。

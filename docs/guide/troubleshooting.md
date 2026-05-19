@@ -56,7 +56,7 @@ MCP_PORT=8081 scripts/start-demo-stack.sh
 本地 demo 可先设置：
 
 ```bash
-export ACTION_GATEWAY_MCP_TOKEN='Xbcd20198$'
+export ACTION_GATEWAY_MCP_TOKEN="$(cat .local/run/action-gateway-token)"
 ```
 
 ## `tools/list` 能成功，但 `tools/call` 未授权

@@ -17,4 +17,4 @@ else
     redis-cli --host "${REDIS_HOST}" --port "${REDIS_PORT}" < "${REDIS_FILE}" > /dev/null
 fi
 
-echo "Seeded fake Redis demo data."
+echo "Seeded demo Redis data."

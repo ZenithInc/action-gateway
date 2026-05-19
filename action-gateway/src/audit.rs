@@ -1331,8 +1331,8 @@ mod tests {
             "params": {
                 "name": "kubernetes.query_pod_logs",
                 "arguments": {
-                    "namespace": "youse-prodlike",
-                    "pod_name": "fake-order-service-abc123",
+                    "namespace": "sample-prod",
+                    "pod_name": "orders-api-abc123",
                     "tail_lines": 200
                 }
             }
@@ -1344,14 +1344,14 @@ mod tests {
                 "structuredContent": {
                     "status": "succeeded",
                     "action": "kubernetes.query_pod_logs",
-                    "namespace": "youse-prodlike",
-                    "podName": "fake-order-service-abc123",
+                    "namespace": "sample-prod",
+                    "podName": "orders-api-abc123",
                     "tailLines": 200,
                     "lineCount": 2,
                     "logs": "first\nsecond\n",
                     "stderr": "",
                     "allowlist": {
-                        "namespace": "youse-prodlike",
+                        "namespace": "sample-prod",
                         "resource": "pods"
                     }
                 },
@@ -1365,7 +1365,7 @@ mod tests {
 
         assert_eq!(
             event.subject_id.as_deref(),
-            Some("youse-prodlike/pods/fake-order-service-abc123/logs")
+            Some("sample-prod/pods/orders-api-abc123/logs")
         );
         assert_eq!(result_summary["lineCount"], 2);
         assert!(result_summary.get("logs").is_none());
