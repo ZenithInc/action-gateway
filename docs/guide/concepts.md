@@ -1,10 +1,34 @@
 # 核心概念
 
-Action Gateway 的核心目标是把内部能力暴露给 Agent，同时让身份、授权、数据源、allowlist 和审计保持可解释、可收敛。
+Action Gateway 的目标是让 Agent 能调用内部排障能力，同时让每一次调用都有清晰边界：谁在调用、能调用什么、能访问哪个数据源、能触达哪些资源、调用后留下什么审计记录。
+
+## 一次请求如何被处理
+
+典型请求路径如下：
+
+```text
+MCP Client
+  -> Authorization: Bearer <token>
+  -> POST /mcp tools/call
+  -> Gateway 认证 API Key / legacy token
+  -> Gateway 计算 source、tool、action、resource
+  -> Access Policy 授权
+  -> Source 和 Allowlist 校验
+  -> 执行只读查询
+  -> 写入 auditEvents
+  -> 返回 MCP tool result
+```
+
+实际是否能调用成功，取决于两层边界：
+
+- **Access Policy**：这个 Principal 是否有权限调用某个 tool/action/resource。
+- **Allowlist**：这个工具是否被允许触达具体表、key、namespace/resource 或日志索引。
+
+两层都通过才会执行下游查询。
 
 ## MCP Endpoint
 
-Gateway 暴露 HTTP JSON-RPC 入口：
+Gateway 暴露 HTTP JSON-RPC endpoint：
 
 ```text
 POST /mcp
@@ -16,18 +40,21 @@ POST /mcp
 POST /rpc
 ```
 
-客户端通过 `initialize`、`tools/list` 和 `tools/call` 与 Gateway 交互。
+客户端通常按下面顺序工作：
+
+1. `initialize`：确认协议版本和服务能力。
+2. `tools/list`：获取当前身份可见工具。
+3. `tools/call`：调用某个工具。
 
 ## Principal
 
-`Principal` 是调用 Gateway 的主体，可以是服务账号、用户或 legacy admin。生产环境建议为每个服务或 Agent 工作负载创建独立 Principal。
-
-关键字段：
+`Principal` 是调用 Gateway 的主体。生产环境建议为每个 Agent、服务账号或自动化系统创建独立 Principal。
 
 | 字段 | 说明 |
 | --- | --- |
 | `type` | `service_account`、`user` 或 `legacy_admin` |
 | `status` | `active` 或 `disabled` |
+| `metadata` | 业务元数据，例如 owner、service、team |
 
 ## API Key
 
@@ -39,23 +66,22 @@ Authorization: Bearer agk_<key_id>_<secret>
 
 明文 secret 只在创建时返回一次。Gateway store 中只保存 `secretSalt` 和 `secretHash`。
 
-## 部署边界
-
-Gateway 不在单个实例里混合管理多个项目或环境。不同项目、不同环境应独立部署 Gateway，因此授权匹配不包含 project/environment 维度。
-
-一次工具调用的边界由 `source_name`、tool、action 和资源名共同决定；未传 `source_name` 时使用 `default`。
+本地 demo 可以使用 legacy token，例如 `ACTION_GATEWAY_MCP_TOKEN`。生产环境应关闭 legacy token，只使用 API Key。
 
 ## Source
 
-`source` 表示下游数据源。Gateway 自身配置保存在 JSON store，业务数据仍来自下游 MySQL、Redis 或 Kubernetes。
+`source` 表示下游数据源。工具调用可以在 arguments 中传 `source_name`，如果省略则使用 `default`。
 
 常见 source 类型：
 
 | 类型 | 用途 |
 | --- | --- |
 | `mysql` | 支持 `data.query_table` |
-| `redis` | 支持 `redis.query_key` 和日志索引查询 |
-| `kubernetes` | 支持 Kubernetes 资源、rollout 和日志查询 |
+| `redis` | 支持 `redis.query_key` |
+| `logs_redis` | 支持 `logs.query_app_logs`，未配置时可回退到默认 Redis client |
+| `kubernetes` | 支持 Kubernetes 资源、rollout 和 Pod 日志查询 |
+
+建议按项目和环境独立部署 Gateway，例如 `orders-prod` 和 `orders-staging` 分开部署，而不是在同一个 Gateway 实例里混合管理多个环境。
 
 ## Allowlist
 
@@ -63,16 +89,44 @@ Allowlist 定义工具能触达的最小资源边界。
 
 | Allowlist | 保护内容 |
 | --- | --- |
-| `tableAllowlist` | 表名、列、过滤字段、最大 limit、最大预估扫描行数、脱敏规则 |
+| `tableAllowlist` | 表名、列、最大 limit、最大预估扫描行数、脱敏规则 |
 | `redisKeyAllowlist` | Redis key 正则、最大返回字节数、最大成员数 |
 | `kubernetesResourceAllowlist` | namespace、resource、允许动作、输出上限 |
 
+Allowlist 和 access policy 是不同层面的控制。举例：如果 policy 允许 `svc-order-api` 查询 `orders` 表，但 `tableAllowlist` 没有登记 `orders`，调用仍会失败。
+
 ## Access Policy
 
-Access policy 决定某个 Principal 是否能对资源执行某个动作。推荐用 `agctl` 从 `Principal`、`Role`、`RoleBinding` 和 `ApiKey` YAML 编译生成 policy。
+Access policy 决定某个 Principal 是否能对某个资源执行某个动作。推荐用 `agctl` 从 `Principal`、`Role`、`RoleBinding` 和 `ApiKey` YAML 生成 policy。
 
-`Role` 和 `RoleBinding` 本身不持久化，`agctl apply` 会把绑定关系展开成 Gateway store 中的 `accessPolicies`。
+常见动作映射：
+
+| Tool | Action | Resource |
+| --- | --- | --- |
+| `data.query_table` | `select` | `table` |
+| `redis.query_key` | `get` | `redis_key` |
+| `kubernetes.list_resources` | `list` | `kubernetes` |
+| `kubernetes.get_resource` | `get` | `kubernetes` |
+| `kubernetes.rollout_status` | `rollout_status` 或 `rollout_history` | `kubernetes` |
+| `kubernetes.query_pod_logs` | `logs` | `kubernetes` |
+| `logs.query_app_logs` | `query` | `app_logs` |
+| `audit.query_approval_events` | `query` | `audit_events` |
+
+Kubernetes resource name 使用下面的形状：
+
+```text
+<namespace>/<resource>/<name-or-*>
+```
+
+例如：
+
+```text
+default/pods/*
+default/deployments/api
+```
 
 ## Audit Event
 
-Gateway 会追加写入认证、授权和工具调用审计事件。可以通过 `audit.query_approval_events` 查询审计摘要。
+Gateway 会追加写入认证、授权、管理变更和工具调用审计事件。你可以通过 `audit.query_approval_events` 查询审计摘要。
+
+`auditEvents` 存在同一个 JSON store 中。生产环境需要规划归档策略，避免单个 store 文件无限增长。

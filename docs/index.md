@@ -4,39 +4,47 @@ layout: home
 hero:
   name: Action Gateway
   text: 面向 Agent 的受控操作网关
-  tagline: 通过 MCP JSON-RPC 暴露数据库、Redis、Kubernetes、日志和审计查询能力，并用文件化配置、API Key、allowlist 和 access policy 控制每一次调用。
+  tagline: 把 MySQL、Redis、Kubernetes、应用日志和审计查询能力暴露为 MCP tools，并用 API Key、policy、source、allowlist 和审计记录控制每一次调用。
   actions:
     - theme: brand
-      text: 快速开始
+      text: 10 分钟跑通
       link: /guide/getting-started
     - theme: alt
-      text: MCP Client 接入
+      text: 接入 Codex
       link: /guide/mcp-client
 
 features:
-  - title: MCP 工具化
-    details: 将受控能力注册为 MCP tools，Agent 可以远程发现并调用。
-  - title: 文件化权限
-    details: Principal、API Key、access policy、source、allowlist 和审计事件都保存在 JSON store 中。
-  - title: 最小暴露面
-    details: 数据、Redis 和 Kubernetes 能力默认受 allowlist、只读约束、输出上限和审计保护。
+  - title: 可直接接入 Agent
+    details: 提供 HTTP JSON-RPC MCP endpoint，Agent 通过 tools/list 发现能力，通过 tools/call 调用工具。
+  - title: 面向生产的权限边界
+    details: 每个调用都会经过 Principal、API Key、access policy、source 和 allowlist 检查。
+  - title: 文件化控制面
+    details: Gateway 状态保存在 JSON store 中，便于备份、审计和 GitOps 化权限管理。
 ---
 
-## 适用场景
+## 这份文档适合谁
 
-Action Gateway 适合把内部运维和排障能力以标准 MCP 接口提供给 Agent，同时保留清晰的权限边界和审计记录。
+如果你想把内部只读排障能力开放给 Agent，但又不想让 Agent 直接拿数据库账号、Redis 账号或 kubeconfig，Action Gateway 适合放在 Agent 和内部系统之间。
 
-典型能力包括：
+你可以用它完成这些工作：
 
-- 查询 allowlist 内的 MySQL 表，并在查询前执行 `EXPLAIN` 门禁。
-- 只读读取 allowlist 内的 Redis key。
-- 列出、获取 Kubernetes allowlist 资源，并查询 rollout 状态和 Pod 日志。
-- 从 Redis 日志索引查询应用日志摘要。
-- 查询认证、授权和动作审计事件。
+- 让 Agent 查询 allowlist 内的 MySQL 表，并在查询前经过 `EXPLAIN` 门禁。
+- 让 Agent 只读查看 allowlist 内的 Redis key。
+- 让 Agent 查看 Kubernetes 资源摘要、rollout 状态和 Pod 日志。
+- 让 Agent 查询应用日志索引和 Gateway 审计事件。
+- 用 `agctl` 把生产权限写成 YAML，并在变更前后做 diff。
 
-## 推荐阅读路径
+## 从零到可用
 
-1. 从 [快速开始](/guide/getting-started) 启动本地 Gateway。
-2. 阅读 [核心概念](/guide/concepts) 理解 Principal、API Key、source、allowlist 和 policy。
-3. 使用 [agctl 教程](/guide/agctl) 管理生产权限。
-4. 按 [MCP Client 接入](/guide/mcp-client) 接入 Agent 或自定义客户端。
+建议按下面顺序阅读：
+
+1. [快速开始](/guide/getting-started)：本地启动 Gateway，完成一次 MCP 初始化、工具发现和 Redis 查询。
+2. [核心概念](/guide/concepts)：理解 Principal、API Key、source、allowlist 和 access policy 的关系。
+3. [配置 Source 和 Allowlist](/guide/configure-sources)：把 demo 配置换成真实 MySQL、Redis 或 Kubernetes。
+4. [使用 agctl 管理权限](/guide/agctl)：创建调用主体、权限规则和 API Key。
+5. [接入 Codex](/guide/mcp-client)：把 Gateway 作为 Codex 的 MCP server 使用。
+6. [部署与运维](/guide/deployment)：准备生产环境、持久化 store、关闭 legacy token，并规划备份和审计。
+
+## 当前兼容性状态
+
+Action Gateway 目前只测试过 Codex 作为 MCP client。其他兼容 MCP 的客户端理论上可以通过同一个 HTTP JSON-RPC 接口接入，但暂未验证。

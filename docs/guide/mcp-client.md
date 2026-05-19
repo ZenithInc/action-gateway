@@ -1,58 +1,102 @@
-# 接入 MCP Client
+# 接入 Codex
 
-Action Gateway 使用 HTTP JSON-RPC 暴露 MCP endpoint。客户端通常按 `initialize`、`tools/list`、`tools/call` 的顺序工作。
+Action Gateway 目前只测试过 Codex 作为 MCP client。其他兼容 MCP 的客户端理论上可以通过同一个 HTTP JSON-RPC endpoint 接入，但暂未验证。
 
-## Endpoint 和认证
+## 前置条件
 
-```text
-POST /mcp
+先完成：
+
+1. [快速开始](/guide/getting-started)，确认本地 Gateway 可用；或完成 [部署与运维](/guide/deployment)，确认生产 Gateway 可用。
+2. 准备一个 bearer token。本地 demo 可用 `ACTION_GATEWAY_MCP_TOKEN`，生产环境应使用 `agk_<key_id>_<secret>` 格式的 Gateway API Key。
+
+## Codex 配置
+
+在使用 Codex 的项目里添加 `.codex/config.toml`：
+
+```toml
+[mcp_servers.action-gateway]
+url = "http://127.0.0.1:8080/mcp"
+bearer_token_env_var = "ACTION_GATEWAY_MCP_TOKEN"
 ```
 
-生产环境使用 Gateway API Key：
+本地 demo：
 
-```text
-Authorization: Bearer agk_<key_id>_<secret>
+```bash
+export ACTION_GATEWAY_MCP_TOKEN='Xbcd20198$'
 ```
 
-本地 demo 可以使用 legacy token。非 loopback 绑定时，只有显式设置 `GATEWAY_ALLOW_LEGACY_RPC_TOKEN=true` 才接受 legacy token。
+生产环境建议把变量名换成更明确的 secret，例如：
 
-## initialize
+```toml
+[mcp_servers.action-gateway]
+url = "https://gateway.example.com/mcp"
+bearer_token_env_var = "ACTION_GATEWAY_API_KEY"
+```
+
+启动 Codex 前设置：
+
+```bash
+export ACTION_GATEWAY_API_KEY='agk_<key_id>_<secret>'
+```
+
+## 验证 Codex 能看到工具
+
+在 Codex 中询问：
+
+```text
+List the tools exposed by the action-gateway MCP server.
+```
+
+如果配置正确，Codex 应该能看到 Gateway 暴露的工具，例如 `redis.query_key`、`data.query_table` 和 Kubernetes 查询工具。
+
+## 建议给 Codex 的使用方式
+
+让 Codex 先说明它要调用哪个 tool、传什么参数，再执行工具调用。例如：
+
+```text
+Use action-gateway to query Redis key demo:user:1 with limit 20. Show the structured result and explain whether the key is allowlisted.
+```
+
+查询 MySQL：
+
+```text
+Use action-gateway to query table orders from source mysql-main. Return columns id, status, and total with limit 10.
+```
+
+查询 Kubernetes：
+
+```text
+Use action-gateway to list pods in namespace default with limit 20.
+```
+
+## 直接用 HTTP 验证 MCP
+
+如果 Codex 看不到工具，先绕过 Codex，用 curl 验证 Gateway：
 
 ```bash
 curl -s http://127.0.0.1:8080/mcp \
   -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $GATEWAY_API_KEY" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "initialize",
-    "params": {
-      "protocolVersion": "2025-11-25",
-      "capabilities": {},
-      "clientInfo": {
-        "name": "example-agent",
-        "version": "0.1.0"
-      }
-    }
-  }'
+  -H "Authorization: Bearer $ACTION_GATEWAY_MCP_TOKEN" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-Gateway 会返回协议版本、服务信息和工具能力声明。
+这个请求成功但 Codex 看不到工具，通常是 Codex 配置文件位置、变量名或启动环境有问题。
 
-## tools/list
+## MCP 方法
 
-```bash
-curl -s http://127.0.0.1:8080/mcp \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $GATEWAY_API_KEY" \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
-```
+Gateway 支持这些 JSON-RPC 方法：
 
-默认会返回当前认证身份可见的工具。`kubernetes.kubectl_read` 默认隐藏，只有设置 `KUBERNETES_ENABLE_RAW_KUBECTL=true` 时才会出现。
+| Method | 用途 |
+| --- | --- |
+| `initialize` | 返回服务信息和工具能力声明 |
+| `notifications/initialized` | MCP 初始化通知，无响应体 |
+| `tools/list` | 列出当前身份可见工具 |
+| `tools/call` | 调用一个工具 |
+| `ping` | 健康探测 |
 
-## tools/call
+## 工具调用形状
 
-工具调用统一使用 `tools/call`：
+工具统一通过 `tools/call` 调用：
 
 ```json
 {
@@ -60,8 +104,11 @@ curl -s http://127.0.0.1:8080/mcp \
   "id": 3,
   "method": "tools/call",
   "params": {
-    "name": "data.query_table",
-    "arguments": {}
+    "name": "redis.query_key",
+    "arguments": {
+      "key": "demo:user:1",
+      "limit": 20
+    }
   }
 }
 ```
@@ -81,70 +128,4 @@ curl -s http://127.0.0.1:8080/mcp \
 }
 ```
 
-## 指定 source
-
-source-backed tools 可以在 arguments 中传 `source_name`：
-
-```json
-{
-  "source_name": "mysql-main"
-}
-```
-
-如果省略 `source_name`，Gateway 使用 `default` source。
-
-## 查询表数据
-
-```bash
-curl -s http://127.0.0.1:8080/mcp \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $GATEWAY_API_KEY" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 4,
-    "method": "tools/call",
-    "params": {
-      "name": "data.query_table",
-      "arguments": {
-        "source_name": "mysql-main",
-        "table_name": "orders",
-        "columns": ["id", "status", "total"],
-        "filters": {
-          "status": "paid"
-        },
-        "limit": 10
-      }
-    }
-  }'
-```
-
-## 查询应用日志
-
-```bash
-curl -s http://127.0.0.1:8080/mcp \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $GATEWAY_API_KEY" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 5,
-    "method": "tools/call",
-    "params": {
-      "name": "logs.query_app_logs",
-      "arguments": {
-        "app_name": "billing-api",
-        "environment": "prod",
-        "keyword": "12.00",
-        "limit": 20
-      }
-    }
-  }'
-```
-
-## ping
-
-```bash
-curl -s http://127.0.0.1:8080/mcp \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $GATEWAY_API_KEY" \
-  -d '{"jsonrpc":"2.0","id":6,"method":"ping"}'
-```
+source-backed tools 可以在 arguments 中传 `source_name`。如果省略，Gateway 使用 `default` source。

@@ -12,6 +12,14 @@ GATEWAY_STORE_FILE=./gateway-store.json cargo run
 action-gateway/gateway-store.example.json
 ```
 
+## 使用规则
+
+- 真实生产 store 不应提交到 Git。
+- 手工编辑 store 后需要重启 Gateway。
+- 通过 Admin API、`agctl` 或工具调用写入的状态会自动持久化。
+- store 中可能包含 source credential，应当按 secret 处理。
+- `auditEvents` 会持续增长，需要定期归档。
+
 ## 顶层字段
 
 | 字段 | 说明 |
@@ -42,7 +50,16 @@ action-gateway/gateway-store.example.json
 }
 ```
 
-`credential` 可能包含数据库连接串、Redis URL 或 kubeconfig 路径。生产 store 应按敏感配置处理。
+常见 `sourceType`：
+
+| sourceType | credential keys |
+| --- | --- |
+| `mysql` | `url`、`connectionUrl`、`databaseUrl` |
+| `redis` | `url`、`connectionUrl`、`redisUrl` |
+| `logs_redis` | `url`、`connectionUrl`、`redisUrl` |
+| `kubernetes` | `kubeconfig`、`kubeconfigPath`、`kubeconfig_path`、`kubeconfigFile` |
+
+`credentialVersion` 会出现在工具响应和审计中，建议每次轮换 credential 时递增。
 
 ## Table Allowlist
 
@@ -92,3 +109,14 @@ action-gateway/gateway-store.example.json
 ```
 
 Kubernetes 工具会同时检查 source、namespace、resource 和 action。
+
+支持的 action：
+
+| Action | 对应工具 |
+| --- | --- |
+| `list` | `kubernetes.list_resources` |
+| `get` | `kubernetes.get_resource` |
+| `logs` | `kubernetes.query_pod_logs` |
+| `rollout_status` | `kubernetes.rollout_status` status |
+| `rollout_history` | `kubernetes.rollout_status` history |
+| `raw_read` | `kubernetes.kubectl_read` |

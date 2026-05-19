@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress'
 
 export default defineConfig({
   title: 'Action Gateway',
-  description: 'Action Gateway public documentation and tutorials',
+  description: 'Action Gateway user documentation',
   lang: 'zh-CN',
   cleanUrls: true,
   lastUpdated: true,
@@ -12,19 +12,22 @@ export default defineConfig({
   themeConfig: {
     logo: '/logo.svg',
     nav: [
-      { text: '教程', link: '/guide/getting-started' },
-      { text: 'MCP 接入', link: '/guide/mcp-client' },
+      { text: '开始使用', link: '/guide/getting-started' },
+      { text: '配置', link: '/guide/configure-sources' },
+      { text: '接入 Codex', link: '/guide/mcp-client' },
       { text: '参考', link: '/reference/tools' }
     ],
     sidebar: [
       {
-        text: '教程',
+        text: '开始使用',
         items: [
           { text: '快速开始', link: '/guide/getting-started' },
           { text: '核心概念', link: '/guide/concepts' },
+          { text: '配置 Source 和 Allowlist', link: '/guide/configure-sources' },
           { text: '使用 agctl 管理权限', link: '/guide/agctl' },
-          { text: '接入 MCP Client', link: '/guide/mcp-client' },
-          { text: '部署与运维', link: '/guide/deployment' }
+          { text: '接入 Codex', link: '/guide/mcp-client' },
+          { text: '部署与运维', link: '/guide/deployment' },
+          { text: '故障排查', link: '/guide/troubleshooting' }
         ]
       },
       {
@@ -52,7 +55,7 @@ export default defineConfig({
       next: '下一页'
     },
     footer: {
-      message: 'Action Gateway public documentation',
+      message: 'Action Gateway user documentation',
       copyright: 'Built with VitePress'
     }
   }
