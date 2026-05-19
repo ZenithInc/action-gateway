@@ -1,0 +1,172 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to release, for example v0.1.0'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            archive_ext: tar.gz
+            exe_ext: ''
+          - name: linux-aarch64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            archive_ext: tar.gz
+            exe_ext: ''
+          - name: macos-x86_64
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+            archive_ext: tar.gz
+            exe_ext: ''
+          - name: macos-aarch64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            archive_ext: tar.gz
+            exe_ext: ''
+          - name: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive_ext: zip
+            exe_ext: '.exe'
+          - name: windows-aarch64
+            os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            archive_ext: zip
+            exe_ext: '.exe'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Install Rust
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add "${{ matrix.target }}"
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            action-gateway/target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('action-gateway/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-cargo-
+
+      - name: Build binaries
+        shell: bash
+        working-directory: action-gateway
+        run: |
+          cargo build --release --locked --target "${{ matrix.target }}" --bin action-gateway-v2 --bin agctl
+
+      - name: Package binaries
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="action-gateway-${RELEASE_TAG}-${{ matrix.name }}"
+          archive="${package}.${{ matrix.archive_ext }}"
+          staging="release-staging/${package}"
+          mkdir -p "${staging}" release-artifacts
+
+          cp "action-gateway/target/${{ matrix.target }}/release/action-gateway-v2" "${staging}/"
+          cp "action-gateway/target/${{ matrix.target }}/release/agctl" "${staging}/"
+          cp README.md README.zh-CN.md LICENSE "${staging}/"
+          cp action-gateway/example.yaml action-gateway/gateway-store.example.json "${staging}/"
+
+          tar -czf "release-artifacts/${archive}" -C "release-staging" "${package}"
+
+          if command -v sha256sum >/dev/null 2>&1; then
+            (cd release-artifacts && sha256sum "${archive}" > "${archive}.sha256")
+          else
+            (cd release-artifacts && shasum -a 256 "${archive}" > "${archive}.sha256")
+          fi
+
+      - name: Package binaries
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $package = "action-gateway-$env:RELEASE_TAG-${{ matrix.name }}"
+          $archive = "$package.${{ matrix.archive_ext }}"
+          $staging = "release-staging/$package"
+          New-Item -ItemType Directory -Force -Path $staging, "release-artifacts" | Out-Null
+
+          Copy-Item "action-gateway/target/${{ matrix.target }}/release/action-gateway-v2${{ matrix.exe_ext }}" "$staging/"
+          Copy-Item "action-gateway/target/${{ matrix.target }}/release/agctl${{ matrix.exe_ext }}" "$staging/"
+          Copy-Item "README.md", "README.zh-CN.md", "LICENSE" "$staging/"
+          Copy-Item "action-gateway/example.yaml", "action-gateway/gateway-store.example.json" "$staging/"
+
+          Compress-Archive -Path $staging -DestinationPath "release-artifacts/$archive" -Force
+          $hash = Get-FileHash "release-artifacts/$archive" -Algorithm SHA256
+          "$($hash.Hash.ToLower())  $archive" | Out-File "release-artifacts/$archive.sha256" -Encoding ascii
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.name }}
+          path: release-artifacts/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: List release assets
+        run: ls -la release-artifacts
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" release-artifacts/* --clobber
+          else
+            gh release create "${RELEASE_TAG}" release-artifacts/* \
+              --title "${RELEASE_TAG}" \
+              --generate-notes \
+              --verify-tag
+          fi

@@ -176,6 +176,17 @@ npm run docs:dev
 npm run docs:build
 ```
 
+## Release 发布
+
+推送 `v*` tag 会自动为 Linux、macOS 和 Windows 编译制品，并发布 GitHub Release：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+release workflow 会上传 x86_64 和 arm64 平台的 `action-gateway-v2`、`agctl` 二进制文件，并附带 SHA256 校验文件。
+
 ## 安全提示
 
 - 生产调用方应使用 `Authorization: Bearer agk_<key_id>_<secret>` 格式的 Gateway API key。

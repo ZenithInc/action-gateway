@@ -176,6 +176,17 @@ Build the documentation site:
 npm run docs:build
 ```
 
+## Releases
+
+Pushing a `v*` tag automatically builds release artifacts for Linux, macOS, and Windows, then publishes a GitHub Release:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The release workflow uploads `action-gateway-v2` and `agctl` binaries for x86_64 and arm64 platforms, plus SHA256 checksum files.
+
 ## Security Notes
 
 - Production callers should use Gateway API keys in the `Authorization: Bearer agk_<key_id>_<secret>` format.
