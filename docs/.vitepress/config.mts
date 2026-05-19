@@ -1,9 +1,12 @@
 import { defineConfig } from 'vitepress'
 
+const base = process.env.DOCS_BASE ?? '/'
+
 export default defineConfig({
   title: 'Action Gateway',
   description: 'Action Gateway user documentation',
   lang: 'zh-CN',
+  base,
   cleanUrls: true,
   lastUpdated: true,
   markdown: {

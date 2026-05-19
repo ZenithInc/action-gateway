@@ -2,6 +2,8 @@
 
 [English](README.md)
 
+[![Deploy Docs](https://github.com/ZenithInc/action-gateway/actions/workflows/deploy-docs.yml/badge.svg)](https://github.com/ZenithInc/action-gateway/actions/workflows/deploy-docs.yml)
+
 Action Gateway 是一个面向 Agent 的受控 MCP 网关，用 policy 驱动的工具安全暴露 MySQL、Redis、Kubernetes、日志和审计查询能力。
 
 它通过 HTTP JSON-RPC 暴露 MCP endpoint，把内部能力注册为 MCP tools，并使用文件化 JSON store 保存身份、授权、数据源、allowlist 和审计事件。
@@ -153,7 +155,15 @@ manifest 格式可以参考 [`action-gateway/example.yaml`](action-gateway/examp
 
 ## 文档
 
-在仓库根目录运行文档站：
+文档站通过 GitHub Pages 发布：
+
+```text
+https://zenithinc.github.io/action-gateway/
+```
+
+每次推送到 `main`，如果改动涉及 `docs/`、`package.json`、`package-lock.json` 或文档部署 workflow，都会触发 GitHub Actions 部署。
+
+在仓库根目录本地运行文档站：
 
 ```bash
 npm install

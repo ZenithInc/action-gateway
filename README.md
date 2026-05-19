@@ -2,6 +2,8 @@
 
 [中文](README.zh-CN.md)
 
+[![Deploy Docs](https://github.com/ZenithInc/action-gateway/actions/workflows/deploy-docs.yml/badge.svg)](https://github.com/ZenithInc/action-gateway/actions/workflows/deploy-docs.yml)
+
 Action Gateway is a controlled MCP gateway that lets agents securely query MySQL, Redis, Kubernetes, logs, and audit data through policy-driven tools.
 
 It exposes an HTTP JSON-RPC MCP endpoint, registers internal capabilities as MCP tools, and keeps identity, authorization, source configuration, allowlists, and audit events in a file-backed JSON store.
@@ -153,7 +155,15 @@ See [`action-gateway/example.yaml`](action-gateway/example.yaml) and [`action-ga
 
 ## Documentation
 
-Run the documentation site locally from the repository root:
+The documentation site is published with GitHub Pages:
+
+```text
+https://zenithinc.github.io/action-gateway/
+```
+
+Every push to `main` that changes `docs/`, `package.json`, `package-lock.json`, or the docs workflow triggers a GitHub Actions deployment.
+
+Run the docs locally from the repository root:
 
 ```bash
 npm install
