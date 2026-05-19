@@ -1,0 +1,36 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  action-gateway:
+    profiles: ["gateway"]
+    build:
+      context: .
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      GATEWAY_STORE_FILE: /data/gateway-store.json
+      REDIS_URL: redis://redis:6379/
+      RPC_BIND_ADDR: 0.0.0.0:8080
+      RPC_TOKEN: ${RPC_TOKEN:-change-me-for-local-compose}
+      GATEWAY_ALLOW_LEGACY_RPC_TOKEN: "true"
+      KUBERNETES_ENABLE_RAW_KUBECTL: ${KUBERNETES_ENABLE_RAW_KUBECTL:-false}
+    ports:
+      - "${RPC_PORT:-8080}:8080"
+    volumes:
+      - gateway-store:/data
+
+volumes:
+  gateway-store:
+  redis-data:

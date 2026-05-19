@@ -1,0 +1,100 @@
+{
+  "principals": [],
+  "apiKeys": [],
+  "accessPolicies": [],
+  "sources": [
+    {
+      "id": "src_mysql-main_mysql",
+      "sourceName": "mysql-main",
+      "sourceType": "mysql",
+      "displayName": "Main MySQL",
+      "config": {},
+      "credential": {
+        "url": "mysql://user:password@mysql-host:3306/app_db"
+      },
+      "credentialVersion": 1,
+      "enabled": true,
+      "createdAt": "2026-05-18T00:00:00Z",
+      "updatedAt": "2026-05-18T00:00:00Z"
+    },
+    {
+      "id": "src_default_redis",
+      "sourceName": "default",
+      "sourceType": "redis",
+      "displayName": "Default Redis",
+      "config": {},
+      "credential": {
+        "url": "redis://127.0.0.1:6379/"
+      },
+      "credentialVersion": 1,
+      "enabled": true,
+      "createdAt": "2026-05-18T00:00:00Z",
+      "updatedAt": "2026-05-18T00:00:00Z"
+    },
+    {
+      "id": "src_default_kubernetes",
+      "sourceName": "default",
+      "sourceType": "kubernetes",
+      "displayName": "Default Kubernetes",
+      "config": {},
+      "credential": {
+        "kubeconfigPath": "/path/to/kubeconfig"
+      },
+      "credentialVersion": 1,
+      "enabled": true,
+      "createdAt": "2026-05-18T00:00:00Z",
+      "updatedAt": "2026-05-18T00:00:00Z"
+    }
+  ],
+  "tableAllowlist": [
+    {
+      "sourceName": "mysql-main",
+      "tableName": "orders",
+      "columns": [
+        "id",
+        "status",
+        "customer_name",
+        "customer_email",
+        "total",
+        "created_at"
+      ],
+      "maxLimit": 100,
+      "maxEstimatedRows": 10000,
+      "maskRules": {
+        "customer_name": {
+          "type": "partial",
+          "prefix": 1,
+          "suffix": 0
+        },
+        "customer_email": "email"
+      },
+      "enabled": true
+    }
+  ],
+  "redisKeyAllowlist": [
+    {
+      "sourceName": "default",
+      "keyPattern": "demo:[A-Za-z0-9_.:-]+",
+      "maxValueBytes": 65536,
+      "maxMembers": 100,
+      "enabled": true
+    }
+  ],
+  "kubernetesResourceAllowlist": [
+    {
+      "sourceName": "default",
+      "namespace": "default",
+      "resource": "pods",
+      "actions": [
+        "list",
+        "get",
+        "logs"
+      ],
+      "maxItems": 100,
+      "maxOutputBytes": 65536,
+      "maxTailLines": 1000,
+      "enabled": true
+    }
+  ],
+  "auditEvents": []
+}
