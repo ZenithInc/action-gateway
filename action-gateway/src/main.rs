@@ -4,16 +4,20 @@ mod audit;
 mod control_plane;
 mod mcp;
 
-use std::net::SocketAddr;
+use std::{convert::Infallible, net::SocketAddr};
 
 use action_gateway_v2::store::FileStore;
 use axum::{
     Json, Router,
     extract::State,
     http::{HeaderMap, StatusCode, header},
-    response::{IntoResponse, Response},
+    response::{
+        IntoResponse, Response,
+        sse::{Event, KeepAlive, Sse},
+    },
     routing::{get, post},
 };
+use futures_util::stream::{self, StreamExt};
 
 #[derive(Clone)]
 struct AppState {
@@ -83,14 +87,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn app(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
-        .route("/mcp", post(handle_mcp))
-        .route("/rpc", post(handle_mcp))
+        .route("/mcp", post(handle_mcp).get(handle_mcp_stream))
+        .route("/mcp/", post(handle_mcp).get(handle_mcp_stream))
+        .route("/rpc", post(handle_mcp).get(handle_mcp_stream))
+        .route("/rpc/", post(handle_mcp).get(handle_mcp_stream))
         .nest("/admin", admin::router())
         .with_state(state)
 }
 
 async fn healthz() -> &'static str {
     "ok"
+}
+
+async fn handle_mcp_stream(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    match control_plane::authenticate(&state.store, &headers, &state.auth_config).await {
+        Ok(_) => Sse::new(
+            stream::once(async { Ok(Event::default().comment("connected")) })
+                .chain(stream::pending::<Result<Event, Infallible>>()),
+        )
+        .keep_alive(KeepAlive::default())
+        .into_response(),
+        Err(error) => {
+            let status = match error.kind {
+                control_plane::AuthErrorKind::StoreUnavailable => StatusCode::SERVICE_UNAVAILABLE,
+                _ => StatusCode::UNAUTHORIZED,
+            };
+            (
+                status,
+                [(header::CONTENT_TYPE, "application/json")],
+                r#"{"message":"unauthorized"}"#,
+            )
+                .into_response()
+        }
+    }
 }
 
 async fn handle_mcp(State(state): State<AppState>, headers: HeaderMap, body: String) -> Response {
