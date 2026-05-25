@@ -11,6 +11,8 @@ Action Gateway 目前只测试过 Codex 作为 MCP client。其他兼容 MCP 的
 
 ## Codex 配置
 
+下面的 `127.0.0.1` 示例只适合本地开发、测试，或 Gateway 进程和配置对 Codex 不可写的受控环境。生产环境中，Codex 不应和持有生产凭证的 Gateway 处在同一个可写工作区或同一个可控进程域内；推荐把 Gateway 独立部署到 Codex 不能修改、不能重启、不能读取 secret 的环境，然后让 Codex 只访问 Gateway 的 `/mcp` endpoint。
+
 在使用 Codex 的项目里添加 `.codex/config.toml`：
 
 ```toml
