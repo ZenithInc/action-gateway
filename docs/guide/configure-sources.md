@@ -41,6 +41,14 @@ GATEWAY_STORE_FILE=/etc/action-gateway/gateway-store.json /opt/action-gateway/bi
 
 手工编辑 JSON store 后需要重启 Gateway。通过 Admin API 或 `agctl` 写入的内容会自动持久化。
 
+## Allowlist 和权限 Manifest 的关系
+
+本页配置的是 source 和 allowlist。它们定义这个 Gateway 实例最多能连接哪些下游系统、最多允许触达哪些表、key、namespace 或 resource。
+
+`agctl` manifest 解决的是另一件事：哪个 Principal 能使用哪些 tool 访问哪些资源。即使 `agctl` 已经授权，如果目标表或 key 没有出现在 allowlist 中，调用仍会返回 `not allowlisted`；反过来，allowlist 已经放行但调用方没有 policy，调用会返回 `unauthorized`。
+
+因此配置顺序通常是先设置 source 和 allowlist，再用 `agctl` 给具体调用方授予更小范围的权限。
+
 ## 配置 MySQL source
 
 在 `sources` 中添加或修改 MySQL source：

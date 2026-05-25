@@ -95,6 +95,38 @@ Allowlist 定义工具能触达的最小资源边界。
 
 Allowlist 和 access policy 是不同层面的控制。举例：如果 policy 允许 `svc-order-api` 查询 `orders` 表，但 `tableAllowlist` 没有登记 `orders`，调用仍会失败。
 
+## Allowlist 和 agctl Manifest 的区别
+
+Allowlist 和 `agctl` manifest 是两层门禁，不是同一份配置的两种写法。
+
+Allowlist 定义这个 Gateway 实例最多允许触达哪些下游资源。它在 Gateway store 中维护，例如：
+
+- `tableAllowlist`：允许查询哪些 MySQL 表、哪些列、最大 limit、`EXPLAIN` 阈值和脱敏规则。
+- `redisKeyAllowlist`：允许读取哪些 Redis key pattern，以及最大返回字节数和最大成员数。
+- `kubernetesResourceAllowlist`：允许访问哪些 namespace、resource 和 action。
+
+`agctl` manifest 定义哪个调用方有权使用哪些工具访问哪些资源。它声明 `Principal`、`Role`、`RoleBinding` 和 `ApiKey`，应用后会编译成 Gateway store 中的 `accessPolicies`。
+
+调用成功必须同时通过这两层：
+
+| Allowlist | agctl policy | 结果 |
+| --- | --- | --- |
+| 没有放行目标资源 | 已授权调用方 | 返回 `not allowlisted` |
+| 已放行目标资源 | 没有授权调用方 | 返回 `unauthorized` |
+| 已放行目标资源 | 已授权调用方 | 执行下游只读查询 |
+
+例如 Redis：
+
+- `redisKeyAllowlist.keyPattern = "orders:[A-Za-z0-9_.:-]+"` 表示这个 Gateway 实例最多允许读取 `orders:` 前缀下符合规则的 key。
+- `agctl` manifest 里的 `resourceNames: ["orders:*"]` 表示某个 Principal 有权限调用 `redis.query_key` 读取这类 key。
+
+例如 MySQL：
+
+- `tableAllowlist` 登记 `mysql-main.orders` 和允许的列，表示这个 Gateway 实例最多允许查询这些列。
+- `agctl` manifest 授权 `svc-order-api` 对 `orders` 执行 `select`，表示这个调用方可以使用 `data.query_table` 查询该表。
+
+这种设计把资源安全上限和调用方权限分开，便于做纵深防御：平台团队可以先限制 Gateway 能碰到的资源，再给不同 Agent 或服务账号分配更小的访问范围。
+
 ## Access Policy
 
 Access policy 决定某个 Principal 是否能对某个资源执行某个动作。推荐用 `agctl` 从 `Principal`、`Role`、`RoleBinding` 和 `ApiKey` YAML 生成 policy。

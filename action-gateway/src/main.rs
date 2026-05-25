@@ -10,7 +10,7 @@ use action_gateway_v2::store::FileStore;
 use axum::{
     Json, Router,
     extract::State,
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -137,7 +137,12 @@ async fn handle_mcp(State(state): State<AppState>, headers: HeaderMap, body: Str
 
     match response {
         Some(response) => (StatusCode::OK, Json(response)).into_response(),
-        None => StatusCode::ACCEPTED.into_response(),
+        None => (
+            StatusCode::ACCEPTED,
+            [(header::CONTENT_TYPE, "application/json")],
+            "",
+        )
+            .into_response(),
     }
 }
 

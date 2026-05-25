@@ -4,6 +4,8 @@
 
 `agctl` 管理的是身份和 access policy。source 和 allowlist 的配置见 [配置 Source 和 Allowlist](/guide/configure-sources)。
 
+注意：`agctl` manifest 不替代 allowlist。manifest 授权某个 Principal 可以调用哪些 tool、访问哪些资源；allowlist 则限制这个 Gateway 实例最多允许触达哪些下游表、Redis key 或 Kubernetes 资源。调用必须同时通过 access policy 和 allowlist。
+
 ## 准备 admin token
 
 首次 bootstrap 可以使用 Gateway 启动时配置的 `RPC_TOKEN`：
