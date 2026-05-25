@@ -120,6 +120,32 @@ Query rows from an allowlisted MySQL table after passing an `EXPLAIN` gate and a
       "type": "object",
       "description": "Optional equality filters keyed by column name."
     },
+    "order_by": {
+      "type": "array",
+      "maxItems": 3,
+      "description": "Optional ordered sort keys. Columns must be allowlisted.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "column": {
+            "type": "string",
+            "description": "Column to sort by."
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "default": "asc"
+          }
+        },
+        "required": [
+          "column"
+        ],
+        "additionalProperties": false
+      }
+    },
     "limit": {
       "type": "integer",
       "minimum": 1,
@@ -134,7 +160,7 @@ Query rows from an allowlisted MySQL table after passing an `EXPLAIN` gate and a
 }
 ```
 
-Runtime validation also requires valid MySQL identifiers, allowlisted columns and filters, scalar filter values, configured `max_limit`, configured `max_estimated_rows`, and valid `mask_rules`.
+Runtime validation also requires valid MySQL identifiers, allowlisted columns, filters, and sort columns, scalar filter values, at most 3 sort keys, configured `max_limit`, configured `max_estimated_rows`, and valid `mask_rules`.
 
 ## `redis.query_key`
 

@@ -116,4 +116,25 @@ curl -s http://127.0.0.1:8080/mcp \
 - 检查 `url` 端口是否正确。
 - 检查 `bearer_token_env_var` 指向的环境变量是否在 Codex 进程启动前设置。
 
+如果 Codex 启动时报类似 `Unexpected content type: Some("missing-content-type; body: ")`，但直接 curl Gateway 能成功，重点检查 Codex 所在机器是否设置了代理环境变量，例如 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY`。代理可能会截走发往 `127.0.0.1`、`localhost` 或内网 Gateway 域名的 MCP 请求，导致握手响应不是 Gateway 返回的 JSON。
+
+先用不走代理的 curl 验证：
+
+```bash
+curl --noproxy "*" -i http://127.0.0.1:8080/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $ACTION_GATEWAY_API_KEY" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"curl","version":"0.1.0"}}}'
+```
+
+如果这样成功，在启动 Codex 前设置 `NO_PROXY` 和 `no_proxy`，至少包含 Gateway host：
+
+```bash
+export NO_PROXY="127.0.0.1,localhost,::1,gateway.example.com"
+export no_proxy="$NO_PROXY"
+```
+
+设置后必须重新启动 Codex。
+
 如果 curl 失败，先按本页前面的认证、端口和 Gateway 状态排查。

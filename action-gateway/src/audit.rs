@@ -390,6 +390,7 @@ fn request_summary(request: &Value, action_name: Option<&str>) -> Value {
                 "filterColumns".to_string(),
                 json!(object_keys(arguments, "filters")),
             );
+            insert_optional_value(&mut summary, "orderBy", arguments.get("order_by").cloned());
             insert_optional_value(&mut summary, "limit", arguments.get("limit").cloned());
         }
         Some("redis.query_key") => {
@@ -1257,6 +1258,9 @@ mod tests {
                     "filters": {
                         "status": "paid"
                     },
+                    "order_by": [
+                        {"column": "created_at", "direction": "desc"}
+                    ],
                     "limit": 10
                 }
             }
@@ -1291,6 +1295,10 @@ mod tests {
         assert_eq!(event.after_status.as_deref(), Some("succeeded"));
         assert_eq!(event.decision.as_deref(), Some("allowed"));
         assert_eq!(event.request_summary["filterColumns"], json!(["status"]));
+        assert_eq!(
+            event.request_summary["orderBy"],
+            json!([{ "column": "created_at", "direction": "desc" }])
+        );
         assert!(event.result_summary.unwrap().get("rows").is_none());
     }
 

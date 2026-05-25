@@ -19,7 +19,7 @@ Gateway 通过 `tools/list` 暴露 MCP tools。实际可调用范围还会受 AP
 
 ## `data.query_table`
 
-查询 allowlist 内的 MySQL 表。Gateway 会校验表名、列、过滤字段、limit、预估扫描行数和脱敏规则。
+查询 allowlist 内的 MySQL 表。Gateway 会校验表名、列、过滤字段、排序字段、limit、预估扫描行数和脱敏规则。
 
 ```json
 {
@@ -29,6 +29,9 @@ Gateway 通过 `tools/list` 暴露 MCP tools。实际可调用范围还会受 AP
   "filters": {
     "status": "paid"
   },
+  "order_by": [
+    {"column": "created_at", "direction": "desc"}
+  ],
   "limit": 100
 }
 ```
@@ -41,6 +44,7 @@ Gateway 通过 `tools/list` 暴露 MCP tools。实际可调用范围还会受 AP
 | `source_name` | 否 | 逻辑 source 名，默认 `default` |
 | `columns` | 否 | 返回列列表，只能使用 allowlist 中的列 |
 | `filters` | 否 | 等值过滤条件，字段必须在 allowlist 中 |
+| `order_by` | 否 | 排序条件数组，最多 3 个字段；每个字段必须在 allowlist 中，`direction` 可为 `asc` 或 `desc`，默认 `asc` |
 | `limit` | 否 | 返回行数，最终受 `maxLimit` 限制 |
 
 Policy resource name 使用表名，例如 `orders`。

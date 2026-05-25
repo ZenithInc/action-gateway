@@ -77,7 +77,7 @@ GATEWAY_STORE_FILE=/etc/action-gateway/gateway-store.json /opt/action-gateway/bi
 }
 ```
 
-`data.query_table` 只允许访问 allowlist 中的表和列。`filters` 也必须使用允许的字段。
+`data.query_table` 只允许访问 allowlist 中的表和列。`filters` 和 `order_by` 也必须使用允许的字段。
 
 ## Redis Key Allowlist
 

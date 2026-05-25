@@ -33,6 +33,15 @@ bearer_token_env_var = "ACTION_GATEWAY_API_KEY"
 export ACTION_GATEWAY_API_KEY='agk_<key_id>_<secret>'
 ```
 
+如果 Codex 运行环境设置了 HTTP 代理，并且 Gateway 使用 `127.0.0.1`、`localhost` 或内网域名，启动 Codex 前还要让这些地址绕过代理：
+
+```bash
+export NO_PROXY="127.0.0.1,localhost,::1,gateway.example.com"
+export no_proxy="$NO_PROXY"
+```
+
+把 `gateway.example.com` 替换成实际 Gateway host。设置后重新启动 Codex，让 MCP client 进程继承这些环境变量。
+
 ## 验证 Codex 能看到工具
 
 在 Codex 中询问：
@@ -54,7 +63,7 @@ Use action-gateway to query Redis key orders:123 with limit 20. Show the structu
 查询 MySQL：
 
 ```text
-Use action-gateway to query table orders from source mysql-main. Return columns id, status, and total with limit 10.
+Use action-gateway to query table orders from source mysql-main. Return columns id, status, and total, sorted by created_at descending, with limit 10.
 ```
 
 查询 Kubernetes：

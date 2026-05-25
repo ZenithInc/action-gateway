@@ -99,6 +99,7 @@ MySQL credential 支持这些 key：
 - `table_name` 必须匹配 `tableName`。
 - `columns` 只能选择 allowlist 中的列。
 - `filters` 也只能使用 allowlist 中的列。
+- `order_by` 排序字段也只能使用 allowlist 中的列，最多 3 个字段，方向为 `asc` 或 `desc`。
 - `limit` 不能超过 `maxLimit`。
 - 查询执行前会先跑 `EXPLAIN`，预估扫描行数不能超过 `maxEstimatedRows`。
 

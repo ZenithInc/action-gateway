@@ -59,6 +59,27 @@ pub fn list_tools() -> Value {
                             "type": "object",
                             "description": "Optional equality filters keyed by column name."
                         },
+                        "order_by": {
+                            "type": "array",
+                            "maxItems": 3,
+                            "description": "Optional ordered sort keys. Columns must be allowlisted.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "column": {
+                                        "type": "string",
+                                        "description": "Column to sort by."
+                                    },
+                                    "direction": {
+                                        "type": "string",
+                                        "enum": ["asc", "desc"],
+                                        "default": "asc"
+                                    }
+                                },
+                                "required": ["column"],
+                                "additionalProperties": false
+                            }
+                        },
                         "limit": {
                             "type": "integer",
                             "minimum": 1,
@@ -717,6 +738,10 @@ async fn query_table_data(store: &FileStore, arguments: &Value) -> Value {
         Ok(filters) => filters,
         Err(message) => return tool_argument_error(TOOL_QUERY_TABLE_DATA, &message, arguments),
     };
+    let order_by = match parse_order_by_argument(arguments, &allowed_columns, &actual_columns) {
+        Ok(order_by) => order_by,
+        Err(message) => return tool_argument_error(TOOL_QUERY_TABLE_DATA, &message, arguments),
+    };
     let limit = match parse_limit(arguments, allowlist.max_limit) {
         Ok(limit) => limit,
         Err(message) => return tool_argument_error(TOOL_QUERY_TABLE_DATA, &message, arguments),
@@ -727,6 +752,7 @@ async fn query_table_data(store: &FileStore, arguments: &Value) -> Value {
         &table_path,
         &selected_columns,
         &filters,
+        &order_by,
         limit,
         allowlist.max_estimated_rows,
     )
@@ -751,7 +777,16 @@ async fn query_table_data(store: &FileStore, arguments: &Value) -> Value {
         }
     };
 
-    match execute_table_query(&source_db, &table_path, &selected_columns, &filters, limit).await {
+    match execute_table_query(
+        &source_db,
+        &table_path,
+        &selected_columns,
+        &filters,
+        &order_by,
+        limit,
+    )
+    .await
+    {
         Ok(rows) => {
             let (rows, masking) = mask_rows(rows, &selected_columns, &mask_rules);
 
@@ -760,6 +795,7 @@ async fn query_table_data(store: &FileStore, arguments: &Value) -> Value {
                 table_name,
                 selected_columns,
                 filters,
+                order_by,
                 limit,
                 rows,
                 explain_gate,
@@ -3077,6 +3113,34 @@ struct TablePath {
     quoted: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct OrderBy {
+    column: String,
+    direction: SortDirection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SortDirection {
+    Asc,
+    Desc,
+}
+
+impl SortDirection {
+    fn as_sql(self) -> &'static str {
+        match self {
+            Self::Asc => "ASC",
+            Self::Desc => "DESC",
+        }
+    }
+
+    fn as_json(self) -> &'static str {
+        match self {
+            Self::Asc => "asc",
+            Self::Desc => "desc",
+        }
+    }
+}
+
 async fn load_allowed_table(
     store: &FileStore,
     source: &control_plane::SourceRef,
@@ -3192,6 +3256,88 @@ fn parse_filters_argument(
 
     parsed.sort_by(|left, right| left.0.cmp(&right.0));
     Ok(parsed)
+}
+
+const MAX_ORDER_BY_COLUMNS: usize = 3;
+
+fn parse_order_by_argument(
+    arguments: &Value,
+    allowed_columns: &[String],
+    actual_columns: &[String],
+) -> Result<Vec<OrderBy>, String> {
+    let Some(order_by) = arguments.get("order_by") else {
+        return Ok(Vec::new());
+    };
+    let order_by = order_by
+        .as_array()
+        .ok_or_else(|| "order_by must be an array".to_string())?;
+    if order_by.len() > MAX_ORDER_BY_COLUMNS {
+        return Err(format!(
+            "order_by must include at most {MAX_ORDER_BY_COLUMNS} column(s)"
+        ));
+    }
+
+    let allowed_set = columns_set(allowed_columns);
+    let actual_set = columns_set(actual_columns);
+    let mut seen = HashSet::new();
+    let mut parsed = Vec::with_capacity(order_by.len());
+
+    for item in order_by {
+        let item = item
+            .as_object()
+            .ok_or_else(|| "order_by entries must be objects".to_string())?;
+        let column = item
+            .get("column")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "order_by entry must include column".to_string())?;
+        if !is_valid_identifier(column) {
+            return Err(format!(
+                "order_by column is not a valid identifier: {column}"
+            ));
+        }
+        if !actual_set.contains(column) {
+            return Err(format!("order_by column does not exist on table: {column}"));
+        }
+        if !allowed_set.is_empty() && !allowed_set.contains(column) {
+            return Err(format!("order_by column is not allowlisted: {column}"));
+        }
+        if !seen.insert(column.to_string()) {
+            return Err(format!("duplicate order_by column: {column}"));
+        }
+
+        let direction = match item.get("direction") {
+            Some(Value::String(direction)) if direction.eq_ignore_ascii_case("asc") => {
+                SortDirection::Asc
+            }
+            Some(Value::String(direction)) if direction.eq_ignore_ascii_case("desc") => {
+                SortDirection::Desc
+            }
+            Some(Value::String(_)) => {
+                return Err("order_by direction must be asc or desc".to_string());
+            }
+            Some(_) => return Err("order_by direction must be a string".to_string()),
+            None => SortDirection::Asc,
+        };
+
+        parsed.push(OrderBy {
+            column: column.to_string(),
+            direction,
+        });
+    }
+
+    Ok(parsed)
+}
+
+fn order_by_to_json(order_by: &[OrderBy]) -> Vec<Value> {
+    order_by
+        .iter()
+        .map(|item| {
+            json!({
+                "column": &item.column,
+                "direction": item.direction.as_json()
+            })
+        })
+        .collect()
 }
 
 fn parse_limit(arguments: &Value, allowlist_max_limit: i64) -> Result<i64, String> {
@@ -3545,6 +3691,7 @@ async fn explain_table_query(
     table_path: &TablePath,
     columns: &[String],
     filters: &[(String, Value)],
+    order_by: &[OrderBy],
     limit: i64,
     max_estimated_rows: i64,
 ) -> Result<ExplainGateReport, sqlx::Error> {
@@ -3555,7 +3702,7 @@ async fn explain_table_query(
     let max_estimated_rows = u64::try_from(max_estimated_rows)
         .map_err(|_| decode_error("max_estimated_rows must be positive"))?;
     let mut builder = QueryBuilder::<MySql>::new("EXPLAIN ");
-    append_table_query(&mut builder, table_path, columns, filters, limit)?;
+    append_table_query(&mut builder, table_path, columns, filters, order_by, limit)?;
     let rows = builder.build().fetch_all(db).await?;
 
     if rows.is_empty() {
@@ -3618,10 +3765,11 @@ async fn execute_table_query(
     table_path: &TablePath,
     columns: &[String],
     filters: &[(String, Value)],
+    order_by: &[OrderBy],
     limit: i64,
 ) -> Result<Vec<Value>, sqlx::Error> {
     let mut builder = QueryBuilder::<MySql>::new("");
-    append_table_query(&mut builder, table_path, columns, filters, limit)?;
+    append_table_query(&mut builder, table_path, columns, filters, order_by, limit)?;
     let rows = builder.build().fetch_all(db).await?;
     let mut json_rows = Vec::with_capacity(rows.len());
 
@@ -3638,6 +3786,7 @@ fn append_table_query<'args>(
     table_path: &TablePath,
     columns: &'args [String],
     filters: &'args [(String, Value)],
+    order_by: &'args [OrderBy],
     limit: i64,
 ) -> Result<(), sqlx::Error> {
     builder.push("SELECT JSON_OBJECT(");
@@ -3667,6 +3816,20 @@ fn append_table_query<'args>(
             builder.push(quote_identifier(column));
             builder.push(" <=> ");
             push_json_value_bind(builder, value)?;
+        }
+    }
+
+    if !order_by.is_empty() {
+        builder.push(" ORDER BY ");
+
+        for (index, item) in order_by.iter().enumerate() {
+            if index > 0 {
+                builder.push(", ");
+            }
+
+            builder.push(quote_identifier(&item.column));
+            builder.push(" ");
+            builder.push(item.direction.as_sql());
         }
     }
 
@@ -3722,6 +3885,7 @@ fn table_query_result(
     table_name: &str,
     columns: Vec<String>,
     filters: Vec<(String, Value)>,
+    order_by: Vec<OrderBy>,
     limit: i64,
     rows: Vec<Value>,
     explain_gate: ExplainGateReport,
@@ -3731,6 +3895,7 @@ fn table_query_result(
 ) -> Value {
     let row_count = rows.len();
     let filters = filters.into_iter().collect::<serde_json::Map<_, _>>();
+    let order_by = order_by_to_json(&order_by);
 
     json!({
         "content": [
@@ -3747,6 +3912,7 @@ fn table_query_result(
             "tableName": table_name,
             "columns": columns,
             "filters": filters,
+            "orderBy": order_by,
             "limit": limit,
             "rowCount": row_count,
             "rows": rows,
@@ -5185,17 +5351,107 @@ mod tests {
     }
 
     #[test]
+    fn parses_order_by_argument() {
+        let allowed_columns = vec!["id".to_string(), "created_at".to_string()];
+        let actual_columns = allowed_columns.clone();
+        let order_by = parse_order_by_argument(
+            &json!({
+                "order_by": [
+                    {"column": "created_at", "direction": "DESC"},
+                    {"column": "id"}
+                ]
+            }),
+            &allowed_columns,
+            &actual_columns,
+        )
+        .unwrap();
+
+        assert_eq!(
+            order_by,
+            vec![
+                OrderBy {
+                    column: "created_at".to_string(),
+                    direction: SortDirection::Desc,
+                },
+                OrderBy {
+                    column: "id".to_string(),
+                    direction: SortDirection::Asc,
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_order_by_argument() {
+        let allowed_columns = vec!["id".to_string()];
+        let actual_columns = vec!["id".to_string(), "created_at".to_string()];
+
+        assert_eq!(
+            parse_order_by_argument(
+                &json!({"order_by": [{"column": "created_at"}]}),
+                &allowed_columns,
+                &actual_columns,
+            )
+            .unwrap_err(),
+            "order_by column is not allowlisted: created_at"
+        );
+        assert_eq!(
+            parse_order_by_argument(
+                &json!({"order_by": [{"column": "id", "direction": "sideways"}]}),
+                &allowed_columns,
+                &actual_columns,
+            )
+            .unwrap_err(),
+            "order_by direction must be asc or desc"
+        );
+        assert_eq!(
+            parse_order_by_argument(
+                &json!({"order_by": [{"column": "id"}, {"column": "id"}]}),
+                &allowed_columns,
+                &actual_columns,
+            )
+            .unwrap_err(),
+            "duplicate order_by column: id"
+        );
+    }
+
+    #[test]
     fn builds_bound_table_query() {
         let table_path = parse_table_path("orders").unwrap();
         let columns = vec!["id".to_string(), "status".to_string()];
         let filters = vec![("status".to_string(), json!("paid"))];
         let mut builder = QueryBuilder::<MySql>::new("");
 
-        append_table_query(&mut builder, &table_path, &columns, &filters, 25).unwrap();
+        append_table_query(&mut builder, &table_path, &columns, &filters, &[], 25).unwrap();
 
         assert_eq!(
             builder.build().sql(),
             "SELECT JSON_OBJECT('id', `id`, 'status', `status`) AS row_json FROM `orders` WHERE `status` <=> ? LIMIT ?"
+        );
+    }
+
+    #[test]
+    fn builds_bound_table_query_with_order_by() {
+        let table_path = parse_table_path("orders").unwrap();
+        let columns = vec!["id".to_string(), "status".to_string()];
+        let filters = vec![("status".to_string(), json!("paid"))];
+        let order_by = vec![
+            OrderBy {
+                column: "created_at".to_string(),
+                direction: SortDirection::Desc,
+            },
+            OrderBy {
+                column: "id".to_string(),
+                direction: SortDirection::Asc,
+            },
+        ];
+        let mut builder = QueryBuilder::<MySql>::new("");
+
+        append_table_query(&mut builder, &table_path, &columns, &filters, &order_by, 25).unwrap();
+
+        assert_eq!(
+            builder.build().sql(),
+            "SELECT JSON_OBJECT('id', `id`, 'status', `status`) AS row_json FROM `orders` WHERE `status` <=> ? ORDER BY `created_at` DESC, `id` ASC LIMIT ?"
         );
     }
 
@@ -5206,7 +5462,7 @@ mod tests {
         let filters = vec![("status".to_string(), json!("paid"))];
         let mut builder = QueryBuilder::<MySql>::new("EXPLAIN ");
 
-        append_table_query(&mut builder, &table_path, &columns, &filters, 25).unwrap();
+        append_table_query(&mut builder, &table_path, &columns, &filters, &[], 25).unwrap();
 
         assert_eq!(
             builder.build().sql(),
@@ -5236,6 +5492,10 @@ mod tests {
             "orders",
             vec!["id".to_string()],
             vec![("status".to_string(), json!("paid"))],
+            vec![OrderBy {
+                column: "created_at".to_string(),
+                direction: SortDirection::Desc,
+            }],
             25,
             vec![json!({"id": 1})],
             explain_gate,
@@ -5256,6 +5516,10 @@ mod tests {
         assert_eq!(
             result["structuredContent"]["explainGate"]["plan"][0]["accessType"],
             "ref"
+        );
+        assert_eq!(
+            result["structuredContent"]["orderBy"],
+            json!([{"column": "created_at", "direction": "desc"}])
         );
     }
 
