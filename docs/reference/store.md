@@ -3,13 +3,13 @@
 Gateway 通过 `GATEWAY_STORE_FILE` 指定 JSON store 文件。该文件保存控制面状态、source 配置、allowlist 和审计事件。
 
 ```bash
-GATEWAY_STORE_FILE=./gateway-store.json cargo run
+GATEWAY_STORE_FILE=/etc/action-gateway/gateway-store.json /opt/action-gateway/bin/action-gateway
 ```
 
-结构示例位于：
+安装后的 store 通常保存为：
 
 ```text
-action-gateway/gateway-store.example.json
+/etc/action-gateway/gateway-store.json
 ```
 
 ## 使用规则
@@ -84,7 +84,7 @@ action-gateway/gateway-store.example.json
 ```json
 {
   "sourceName": "default",
-  "keyPattern": "demo:[A-Za-z0-9_.:-]+",
+  "keyPattern": "orders:[A-Za-z0-9_.:-]+",
   "maxValueBytes": 65536,
   "maxMembers": 100,
   "enabled": true

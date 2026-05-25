@@ -6,10 +6,10 @@
 
 ## 准备 admin token
 
-本地 demo 可以使用 legacy token：
+首次 bootstrap 可以使用 Gateway 启动时配置的 `RPC_TOKEN`：
 
 ```bash
-export GATEWAY_ADMIN_TOKEN="$ACTION_GATEWAY_MCP_TOKEN"
+export GATEWAY_ADMIN_TOKEN="$RPC_TOKEN"
 ```
 
 生产环境建议使用带 admin scope 的 API Key，并且只发给受控 CI/CD 或平台自动化。
@@ -65,10 +65,10 @@ spec:
   expiresAt: null
 ```
 
-仓库里有一份完整示例：
+你可以把上面的 manifest 保存为自己的配置文件，例如：
 
 ```text
-action-gateway/example.yaml
+order-api-gateway.yaml
 ```
 
 ## 预览变更
@@ -76,9 +76,8 @@ action-gateway/example.yaml
 先运行 diff：
 
 ```bash
-cd action-gateway
-cargo run --bin agctl -- diff \
-  -f example.yaml \
+/opt/action-gateway/bin/agctl diff \
+  -f order-api-gateway.yaml \
   --endpoint http://127.0.0.1:8080 \
   --admin-token "$GATEWAY_ADMIN_TOKEN" \
   --prune
@@ -89,8 +88,8 @@ cargo run --bin agctl -- diff \
 ## 应用权限
 
 ```bash
-cargo run --bin agctl -- apply \
-  -f example.yaml \
+/opt/action-gateway/bin/agctl apply \
+  -f order-api-gateway.yaml \
   --endpoint http://127.0.0.1:8080 \
   --admin-token "$GATEWAY_ADMIN_TOKEN" \
   --prune
@@ -103,8 +102,8 @@ cargo run --bin agctl -- apply \
 默认 `apply` 不会创建 secret。需要创建 API Key 时，显式传 `--create-secrets`：
 
 ```bash
-cargo run --bin agctl -- apply \
-  -f example.yaml \
+/opt/action-gateway/bin/agctl apply \
+  -f order-api-gateway.yaml \
   --endpoint http://127.0.0.1:8080 \
   --admin-token "$GATEWAY_ADMIN_TOKEN" \
   --create-secrets
@@ -125,7 +124,7 @@ export GATEWAY_API_KEY='agk_<key_id>_<secret>'
 也可以直接创建 key，并输出一份 GatewayConfig YAML：
 
 ```bash
-cargo run --bin agctl -- create api-key svc-order-api \
+/opt/action-gateway/bin/agctl create api-key svc-order-api \
   --endpoint http://127.0.0.1:8080 \
   --admin-token "$GATEWAY_ADMIN_TOKEN" \
   --out svc-order-api.gateway.yaml
@@ -138,8 +137,8 @@ cargo run --bin agctl -- create api-key svc-order-api \
 提交权限 YAML 前，可以先在本地检查：
 
 ```bash
-cargo run --bin agctl -- auth can-i \
-  -f example.yaml \
+/opt/action-gateway/bin/agctl auth can-i \
+  -f order-api-gateway.yaml \
   --as svc-order-api \
   --verb select \
   --resource table \
@@ -158,7 +157,7 @@ rules:
   - tools: ["redis.query_key"]
     verbs: ["get"]
     resources: ["redis_key"]
-    resourceNames: ["demo:*"]
+    resourceNames: ["orders:*"]
     effect: allow
 ```
 
@@ -207,8 +206,8 @@ rules:
 删除某个 YAML 管理的 access policy：
 
 ```bash
-cargo run --bin agctl -- delete \
-  -f example.yaml \
+/opt/action-gateway/bin/agctl delete \
+  -f order-api-gateway.yaml \
   --endpoint http://127.0.0.1:8080 \
   --admin-token "$GATEWAY_ADMIN_TOKEN"
 ```
@@ -216,8 +215,8 @@ cargo run --bin agctl -- delete \
 同时禁用 manifest 中的 Principal：
 
 ```bash
-cargo run --bin agctl -- delete \
-  -f example.yaml \
+/opt/action-gateway/bin/agctl delete \
+  -f order-api-gateway.yaml \
   --endpoint http://127.0.0.1:8080 \
   --admin-token "$GATEWAY_ADMIN_TOKEN" \
   --disable-principals

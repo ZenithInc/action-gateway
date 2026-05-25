@@ -1,206 +1,121 @@
 # Action Gateway
 
-[中文](README.zh-CN.md)
+Action Gateway is a controlled MCP gateway that exposes MySQL, Redis, Kubernetes, application-log, and audit-query capabilities through policy-driven tools.
 
-[![Deploy Docs](https://github.com/ZenithInc/action-gateway/actions/workflows/deploy-docs.yml/badge.svg)](https://github.com/ZenithInc/action-gateway/actions/workflows/deploy-docs.yml)
+It is designed to sit between agents and internal systems. Agents receive a Gateway API key; they do not receive database credentials, Redis credentials, or kubeconfig files.
 
-Action Gateway is a controlled MCP gateway that lets agents securely query MySQL, Redis, Kubernetes, logs, and audit data through policy-driven tools.
+## Capabilities
 
-It exposes an HTTP JSON-RPC MCP endpoint, registers internal capabilities as MCP tools, and keeps identity, authorization, source configuration, allowlists, and audit events in a file-backed JSON store.
+- **Controlled tools**: read-focused tools for MySQL, Redis, Kubernetes, application logs, and audit events.
+- **Source isolation**: each MySQL, Redis, Kubernetes, or log Redis target is configured as a separate source.
+- **Allowlist gates**: MySQL tables, Redis keys, Kubernetes namespaces/resources/actions all require explicit allowlists.
+- **Identity and authorization**: principals, roles, role bindings, API keys, and access policies scope each caller.
+- **Audit summaries**: tool calls are recorded without storing full business rows, raw log bodies, or Redis values.
 
-## Features
+## How Users Should Start
 
-- **MCP over HTTP**: exposes `POST /mcp` for `initialize`, `tools/list`, and `tools/call`.
-- **Controlled tools**: provides read-focused tools for MySQL, Redis, Kubernetes, application logs, and audit events.
-- **Policy-based access**: uses principals, API keys, access policies, sources, and allowlists to constrain every call.
-- **File-backed control plane**: stores gateway state in a JSON file configured by `GATEWAY_STORE_FILE`.
-- **GitOps-friendly permissions**: includes `agctl` for applying principals, roles, role bindings, and API keys from YAML manifests.
-- **Demo stack**: ships with local Redis demo data and smoke-test scripts for quick validation.
+The recommended path for users is:
 
-## Client Compatibility
+1. Download the release package for your platform from GitHub Releases, or use the matching container image.
+2. Prepare a Gateway store and manage it as a secret.
+3. Configure real MySQL, Redis, Kubernetes, or log Redis sources in the store.
+4. Configure `tableAllowlist`, `redisKeyAllowlist`, or `kubernetesResourceAllowlist`.
+5. Start `action-gateway`.
+6. Use `agctl` to create principals, role bindings, and API keys for callers.
+7. Configure Codex or another MCP client with the Gateway endpoint and API key.
 
-Action Gateway currently has only been tested with Codex as the MCP client. Other MCP-compatible clients should work through the same HTTP JSON-RPC interface, but they have not been verified yet.
+See [Getting Started](docs/guide/getting-started.md) for the full flow.
 
-## Built-in Tools
+The demo stack in this repository is for project contributors who need local sample data. You do not need to clone the whole repository or run fake-order-service to connect Action Gateway to your own development, staging, or production environment.
 
-| Tool | Purpose |
+## Minimal Configuration
+
+Create `/etc/action-gateway/gateway-store.json`:
+
+```json
+{
+  "principals": [],
+  "apiKeys": [],
+  "accessPolicies": [],
+  "sources": [
+    {
+      "id": "src_mysql-main_mysql",
+      "sourceName": "mysql-main",
+      "sourceType": "mysql",
+      "displayName": "Main MySQL",
+      "config": {},
+      "credential": {
+        "url": "mysql://gateway_reader:password@mysql.internal:3306/app_db"
+      },
+      "credentialVersion": 1,
+      "enabled": true
+    },
+    {
+      "id": "src_default_redis",
+      "sourceName": "default",
+      "sourceType": "redis",
+      "displayName": "Default Redis",
+      "config": {},
+      "credential": {
+        "url": "redis://:password@redis.internal:6379/0"
+      },
+      "credentialVersion": 1,
+      "enabled": true
+    }
+  ],
+  "tableAllowlist": [
+    {
+      "sourceName": "mysql-main",
+      "tableName": "orders",
+      "columns": ["id", "status", "total", "created_at"],
+      "maxLimit": 100,
+      "maxEstimatedRows": 10000,
+      "maskRules": {},
+      "enabled": true
+    }
+  ],
+  "redisKeyAllowlist": [
+    {
+      "sourceName": "default",
+      "keyPattern": "orders:[A-Za-z0-9_.:-]+",
+      "maxValueBytes": 65536,
+      "maxMembers": 100,
+      "enabled": true
+    }
+  ],
+  "kubernetesResourceAllowlist": [],
+  "auditEvents": []
+}
+```
+
+Start the gateway:
+
+```bash
+export GATEWAY_STORE_FILE=/etc/action-gateway/gateway-store.json
+export RPC_BIND_ADDR=0.0.0.0:8080
+export RPC_TOKEN='<replace-with-admin-bootstrap-token>'
+export REDIS_URL='redis://:password@redis.internal:6379/0'
+
+/opt/action-gateway/bin/action-gateway
+```
+
+## Tools
+
+| Tool | Description |
 | --- | --- |
 | `data.query_table` | Query allowlisted MySQL tables with an `EXPLAIN` gate before execution. |
 | `redis.query_key` | Read allowlisted Redis keys with output limits. |
 | `kubernetes.list_resources` | List allowlisted Kubernetes resources. |
-| `kubernetes.get_resource` | Read summaries for individual allowlisted Kubernetes resources. |
-| `kubernetes.rollout_status` | Inspect Deployment, StatefulSet, and DaemonSet rollout status/history. |
-| `kubernetes.query_pod_logs` | Query logs for allowlisted pods. |
+| `kubernetes.get_resource` | Read an allowlisted Kubernetes resource. |
+| `kubernetes.query_pod_logs` | Query allowlisted Pod logs. |
+| `kubernetes.rollout_status` | Query Deployment / StatefulSet / DaemonSet rollout status or history. |
 | `logs.query_app_logs` | Query application log summaries from Redis log indexes. |
-| `audit.query_approval_events` | Query authentication, authorization, and tool-call audit events. |
-
-## Repository Layout
-
-```text
-.
-├── action-gateway/        # Rust gateway service, agctl CLI, examples, Docker files
-├── docs/                  # VitePress documentation source
-├── package.json           # Documentation site scripts
-├── README.md              # English README
-└── README.zh-CN.md        # Chinese README
-```
-
-## Quick Start
-
-Prerequisites:
-
-- Rust toolchain
-- Docker, optional but recommended for the demo Redis stack
-- Node.js and npm, only needed for the documentation site
-- `curl`
-
-Start the local demo stack:
-
-```bash
-git clone git@github.com:ZenithInc/action-gateway.git
-cd action-gateway/action-gateway
-scripts/start-demo-stack.sh
-```
-
-The default MCP endpoint is:
-
-```text
-http://127.0.0.1:8080/mcp
-```
-
-If you did not set `ACTION_GATEWAY_MCP_TOKEN` or `RPC_TOKEN` before starting the demo, the script creates a local token file. Load it before running manual curl examples:
-
-```bash
-export ACTION_GATEWAY_MCP_TOKEN="$(cat .local/run/action-gateway-token)"
-```
-
-Check the service:
-
-```bash
-curl -s http://127.0.0.1:8080/healthz
-scripts/smoke-demo-stack.sh
-```
-
-Stop the demo stack:
-
-```bash
-scripts/start-demo-stack.sh stop
-```
-
-Stop the demo stack and Redis:
-
-```bash
-STOP_INFRA=1 scripts/start-demo-stack.sh stop
-```
-
-## Example MCP Calls
-
-Initialize an MCP session:
-
-```bash
-curl -s http://127.0.0.1:8080/mcp \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $ACTION_GATEWAY_MCP_TOKEN" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "initialize",
-    "params": {
-      "protocolVersion": "2025-11-25",
-      "capabilities": {},
-      "clientInfo": {
-        "name": "local-client",
-        "version": "0.1.0"
-      }
-    }
-  }'
-```
-
-List tools:
-
-```bash
-curl -s http://127.0.0.1:8080/mcp \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $ACTION_GATEWAY_MCP_TOKEN" \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
-```
-
-Read a demo Redis key:
-
-```bash
-curl -s http://127.0.0.1:8080/mcp \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $ACTION_GATEWAY_MCP_TOKEN" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 3,
-    "method": "tools/call",
-    "params": {
-      "name": "redis.query_key",
-      "arguments": {
-        "key": "demo:user:1",
-        "limit": 20
-      }
-    }
-  }'
-```
-
-## Managing Permissions with agctl
-
-`agctl` applies declarative YAML manifests to Action Gateway through the Admin JSON API. A manifest can define principals, roles, role bindings, and API keys.
-
-```bash
-cd action-gateway
-cargo run --bin agctl -- apply \
-  -f example.yaml \
-  --endpoint http://127.0.0.1:8080 \
-  --admin-token "$TOKEN"
-```
-
-See [`action-gateway/example.yaml`](action-gateway/example.yaml) and [`action-gateway/AGCTL_YAML_SYNTAX.md`](action-gateway/AGCTL_YAML_SYNTAX.md) for the manifest format.
+| `audit.query_events` | Query Gateway audit event summaries. |
 
 ## Documentation
 
-The repository includes a GitHub Actions workflow for publishing the VitePress documentation to GitHub Pages. After GitHub Pages is enabled once in the repository settings with **Build and deployment > Source > GitHub Actions**, the site is available at:
-
-```text
-https://zenithinc.github.io/action-gateway/
-```
-
-Every push to `main` that changes `docs/`, `package.json`, `package-lock.json`, or the docs workflow triggers a GitHub Actions deployment.
-
-Run the docs locally from the repository root:
-
-```bash
-npm install
-npm run docs:dev
-```
-
-Build the documentation site:
-
-```bash
-npm run docs:build
-```
-
-## Releases
-
-Pushing a `v*` tag automatically builds release artifacts for Linux, macOS, and Windows, then publishes a GitHub Release:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The release workflow uploads `action-gateway-v2` and `agctl` binaries for x86_64 and arm64 platforms, plus SHA256 checksum files.
-
-## Security Notes
-
-- Production callers should use Gateway API keys in the `Authorization: Bearer agk_<key_id>_<secret>` format.
-- API key secrets are returned only once at creation time; the store keeps only salt/hash material.
-- Keep `GATEWAY_STORE_FILE` private because it can contain downstream source credentials.
-- Disable legacy token access in production unless it is explicitly needed for a controlled local or break-glass workflow.
-- Enable raw kubectl diagnostics only when necessary.
-
-## License
-
-Action Gateway is released under the [MIT License](LICENSE).
+- [Getting Started](docs/guide/getting-started.md)
+- [Configure Sources and Allowlists](docs/guide/configure-sources.md)
+- [Deployment](docs/guide/deployment.md)
+- [MCP Client Setup](docs/guide/mcp-client.md)
+- [Store Reference](docs/reference/store.md)

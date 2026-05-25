@@ -6,8 +6,8 @@ Action Gateway 目前只测试过 Codex 作为 MCP client。其他兼容 MCP 的
 
 先完成：
 
-1. [快速开始](/guide/getting-started)，确认本地 Gateway 可用；或完成 [部署与运维](/guide/deployment)，确认生产 Gateway 可用。
-2. 准备一个 bearer token。本地 demo 可用 `ACTION_GATEWAY_MCP_TOKEN`，生产环境应使用 `agk_<key_id>_<secret>` 格式的 Gateway API Key。
+1. [快速开始](/guide/getting-started) 或 [部署与运维](/guide/deployment)，确认 Gateway 可用。
+2. 准备一个 `agk_<key_id>_<secret>` 格式的 Gateway API Key。
 
 ## Codex 配置
 
@@ -16,16 +16,10 @@ Action Gateway 目前只测试过 Codex 作为 MCP client。其他兼容 MCP 的
 ```toml
 [mcp_servers.action-gateway]
 url = "http://127.0.0.1:8080/mcp"
-bearer_token_env_var = "ACTION_GATEWAY_MCP_TOKEN"
+bearer_token_env_var = "ACTION_GATEWAY_API_KEY"
 ```
 
-本地 demo：
-
-```bash
-export ACTION_GATEWAY_MCP_TOKEN="$(cat .local/run/action-gateway-token)"
-```
-
-生产环境建议把变量名换成更明确的 secret，例如：
+如果 Gateway 暴露在内网域名上，可以写成：
 
 ```toml
 [mcp_servers.action-gateway]
@@ -54,7 +48,7 @@ List the tools exposed by the action-gateway MCP server.
 让 Codex 先说明它要调用哪个 tool、传什么参数，再执行工具调用。例如：
 
 ```text
-Use action-gateway to query Redis key demo:user:1 with limit 20. Show the structured result and explain whether the key is allowlisted.
+Use action-gateway to query Redis key orders:123 with limit 20. Show the structured result and explain whether the key is allowlisted.
 ```
 
 查询 MySQL：
@@ -76,7 +70,7 @@ Use action-gateway to list pods in namespace default with limit 20.
 ```bash
 curl -s http://127.0.0.1:8080/mcp \
   -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $ACTION_GATEWAY_MCP_TOKEN" \
+  -H "Authorization: Bearer $ACTION_GATEWAY_API_KEY" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
@@ -106,7 +100,7 @@ Gateway 支持这些 JSON-RPC 方法：
   "params": {
     "name": "redis.query_key",
     "arguments": {
-      "key": "demo:user:1",
+      "key": "orders:123",
       "limit": 20
     }
   }

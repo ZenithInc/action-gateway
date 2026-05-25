@@ -118,8 +118,8 @@ spec:
 ## Local Checks
 
 ```bash
-cargo run --bin agctl -- auth can-i \
-  -f example.yaml \
+/opt/action-gateway/bin/agctl auth can-i \
+  -f order-api-gateway.yaml \
   --as svc-order-api \
   --verb select \
   --resource table \
@@ -130,12 +130,12 @@ cargo run --bin agctl -- auth can-i \
 ## Create Commands
 
 ```bash
-cargo run --bin agctl -- create principal svc-order-api \
+/opt/action-gateway/bin/agctl create principal svc-order-api \
   --type service_account \
   --endpoint http://127.0.0.1:8080 \
   --admin-token "$TOKEN"
 
-cargo run --bin agctl -- create api-key svc-order-api \
+/opt/action-gateway/bin/agctl create api-key svc-order-api \
   --endpoint http://127.0.0.1:8080 \
   --admin-token "$TOKEN" \
   --out svc-order-api.gateway.yaml

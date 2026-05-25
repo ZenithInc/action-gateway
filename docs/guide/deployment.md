@@ -1,143 +1,135 @@
-# 部署与运维
+# 部署建议
 
-本页给出生产部署建议。Action Gateway 本身不依赖控制面数据库，运行时状态由 `GATEWAY_STORE_FILE` 指向的 JSON store 保存。
+本页面向把 Action Gateway 部署到开发、测试或生产环境的使用者。推荐从 GitHub Release 获取二进制或容器镜像，再用 Secret、ConfigMap 或挂载文件注入 Gateway store 和运行时环境变量。
 
-## 部署边界
+仓库里的 demo stack 只用于本地开发验证，不是部署入口。
 
-建议一个 Gateway 实例只服务一个项目和一个环境。例如：
+## 部署形态
 
-```text
-orders-prod      -> 一个 Gateway
-orders-staging   -> 另一个 Gateway
-platform-prod    -> 另一个 Gateway
-```
-
-这样 source、allowlist、policy 和 audit 的边界更容易理解，也更容易回滚。
-
-## 必要组件
-
-| 组件 | 说明 |
+| 形态 | 适用场景 |
 | --- | --- |
-| Action Gateway binary/container | 提供 `/mcp` 和 `/admin` |
-| JSON store 文件 | 保存 source、allowlist、principal、API key hash、policy 和 audit events |
-| Redis | 默认 Redis client；也可作为应用日志索引存储 |
-| `kubectl` | 如果启用 Kubernetes 工具，Gateway 运行环境必须可执行 `kubectl` |
-| Secret manager | 保存 API Key、数据库连接串、Redis URL、kubeconfig |
+| systemd / 进程管理器 | 单机开发、测试环境或小规模内部服务 |
+| Kubernetes Deployment | 生产环境、需要统一发布和 Secret 管理 |
+| 容器编排平台 | 已有镜像发布链路的团队 |
 
-## 环境变量
+无论哪种形态，核心配置都相同：
 
-| 变量 | 生产建议 | 说明 |
-| --- | --- | --- |
-| `RPC_BIND_ADDR` | `0.0.0.0:8080` 或内网地址 | Gateway 监听地址 |
-| `GATEWAY_STORE_FILE` | 持久化路径 | JSON store 文件 |
-| `REDIS_URL` | 内网 Redis URL | 默认 Redis client |
-| `RPC_TOKEN` | 不设置 | legacy token，只建议本地 demo 使用 |
-| `ACTION_GATEWAY_MCP_TOKEN` | 不设置 | legacy token fallback，只建议本地 Codex demo 使用 |
-| `GATEWAY_ALLOW_LEGACY_RPC_TOKEN` | `false` 或不设置 | 非 loopback 是否接受 legacy token |
-| `KUBERNETES_ENABLE_RAW_KUBECTL` | `false` | 是否暴露 raw kubectl 诊断工具 |
+- `action-gateway` 服务端进程。
+- `GATEWAY_STORE_FILE` 指向 Gateway store。
+- `RPC_BIND_ADDR` 指定监听地址。
+- `RPC_TOKEN` 用于首次管理和 bootstrap。
+- `REDIS_URL` 作为默认 Redis client，也可作为应用日志查询的回退 Redis。
 
-生产调用方应使用 Gateway API Key：
+## Secret 和配置
 
-```text
-Authorization: Bearer agk_<key_id>_<secret>
-```
+Gateway store 可能包含数据库连接串、Redis URL、kubeconfig、API key hash 和审计摘要。生产环境应按 secret 处理：
 
-## 启动 binary
+- 不要把真实 store 提交到 Git。
+- 用 Secret manager、Kubernetes Secret、加密磁盘或受限文件权限保存。
+- 给下游 MySQL、Redis 使用只读账号。
+- 轮换 source credential 时递增 `credentialVersion`，方便审计定位。
+
+## 最小运行命令
 
 ```bash
-cd action-gateway
-GATEWAY_STORE_FILE=/var/lib/action-gateway/gateway-store.json \
-REDIS_URL=redis://redis.internal:6379/ \
-RPC_BIND_ADDR=0.0.0.0:8080 \
-cargo run --release
+export GATEWAY_STORE_FILE=/etc/action-gateway/gateway-store.json
+export RPC_BIND_ADDR=0.0.0.0:8080
+export RPC_TOKEN='<replace-with-admin-bootstrap-token>'
+export REDIS_URL='redis://:password@redis.internal:6379/0'
+
+/opt/action-gateway/bin/action-gateway
 ```
 
-如果 `GATEWAY_STORE_FILE` 不存在，Gateway 会创建一个空 store。首次生产部署建议先从 `gateway-store.example.json` 复制并裁剪。
+## systemd 示例
 
-## Docker Compose
+```ini
+[Unit]
+Description=Action Gateway
+After=network-online.target
+Wants=network-online.target
 
-仓库内 compose 配置适合本地或内网验证：
+[Service]
+User=action-gateway
+Group=action-gateway
+Environment=GATEWAY_STORE_FILE=/etc/action-gateway/gateway-store.json
+Environment=RPC_BIND_ADDR=0.0.0.0:8080
+EnvironmentFile=/etc/action-gateway/action-gateway.env
+ExecStart=/opt/action-gateway/bin/action-gateway
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`/etc/action-gateway/action-gateway.env` 中保存敏感环境变量：
 
 ```bash
-cd action-gateway
-export RPC_TOKEN="$(openssl rand -hex 32)"
-GATEWAY_ALLOW_LEGACY_RPC_TOKEN=true \
-docker compose --profile gateway up -d redis action-gateway
+RPC_TOKEN=<replace-with-admin-bootstrap-token>
+REDIS_URL=redis://:password@redis.internal:6379/0
 ```
 
-生产环境不要照搬 legacy token 配置。应该改成：
+## Kubernetes 示例
 
-- 挂载持久化 store。
-- 从 secret manager 注入 source credential。
-- 使用 Gateway API Key。
-- 关闭 `GATEWAY_ALLOW_LEGACY_RPC_TOKEN`。
-
-## 生产初始化流程
-
-1. 准备 store 文件，配置 source 和 allowlist。
-2. 临时使用 loopback legacy token 或受控 admin API Key 完成 bootstrap。
-3. 用 `agctl` 创建平台管理员 Principal。
-4. 创建带 `scopes.admin=true` 的 admin API Key。
-5. 切换自动化系统使用 admin API Key。
-6. 删除或停止使用 legacy token。
-7. 给真实 Agent 创建最小权限 API Key。
-
-创建 admin key 示例：
-
-```bash
-cargo run --bin agctl -- create principal platform-admin \
-  --type service_account \
-  --endpoint http://127.0.0.1:8080 \
-  --admin-token "$GATEWAY_ADMIN_TOKEN"
-
-cargo run --bin agctl -- create api-key platform-admin \
-  --endpoint http://127.0.0.1:8080 \
-  --admin-token "$GATEWAY_ADMIN_TOKEN" \
-  --scopes-json '{"admin":true}' \
-  --out platform-admin.gateway.yaml
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: action-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: action-gateway
+  template:
+    metadata:
+      labels:
+        app: action-gateway
+    spec:
+      containers:
+        - name: action-gateway
+          image: ghcr.io/<org>/action-gateway:<version>
+          ports:
+            - containerPort: 8080
+          env:
+            - name: GATEWAY_STORE_FILE
+              value: /etc/action-gateway/gateway-store.json
+            - name: RPC_BIND_ADDR
+              value: 0.0.0.0:8080
+            - name: RPC_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: action-gateway-secret
+                  key: rpc-token
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: action-gateway-secret
+                  key: redis-url
+          volumeMounts:
+            - name: gateway-store
+              mountPath: /etc/action-gateway
+              readOnly: true
+      volumes:
+        - name: gateway-store
+          secret:
+            secretName: action-gateway-store
 ```
 
-## 健康检查
+如果需要通过 Admin API 或 `agctl apply` 在运行时写入 store，挂载位置必须可写，或者使用持久卷承载 store 文件。只读 Secret 更适合把 store 作为声明式配置发布。
 
-```bash
-curl -s http://127.0.0.1:8080/healthz
-```
+## 网络与权限
 
-MCP 工具发现：
+- Gateway 到 MySQL / Redis / Kubernetes API Server 需要网络可达。
+- MCP Client 只需要访问 Gateway 的 `/mcp` endpoint。
+- Admin API 应限制在内网、堡垒机或 CI/CD 网络内。
+- 下游账号应只授予排障所需的最小权限。
+- Redis key 和 MySQL table 仍必须通过 allowlist 才能访问。
 
-```bash
-curl -s http://127.0.0.1:8080/mcp \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $GATEWAY_API_KEY" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-```
+## 上线前检查
 
-## Store 备份和归档
-
-store 是控制面状态源，需要按敏感数据处理：
-
-- 定期备份 `GATEWAY_STORE_FILE`。
-- 限制文件权限，只允许 Gateway 进程和受控运维读取。
-- 对 `auditEvents` 做定期归档，避免单个 JSON 文件无限增长。
-- 变更 source credential 后递增 `credentialVersion`，便于审计。
-
-## Kubernetes 运行要求
-
-如果使用 Kubernetes 工具：
-
-- Gateway 运行环境必须安装 `kubectl`。
-- source credential 必须提供 `kubeconfig` 或 `kubeconfigPath`。
-- kubeconfig 对应身份应只具备只读权限。
-- `kubernetesResourceAllowlist` 只开放必要 namespace/resource/action。
-- 默认不要开启 `KUBERNETES_ENABLE_RAW_KUBECTL`。
-
-## 上线检查清单
-
-- 已为每个项目/环境单独部署 Gateway。
-- `GATEWAY_STORE_FILE` 已持久化、备份并限制权限。
-- 真实 source credential 没有提交到 Git。
-- 所有 Agent 都使用独立 Principal 和 API Key。
-- legacy token 已关闭或只绑定 loopback。
-- allowlist 从最小范围开始，不使用宽泛正则。
-- Kubernetes raw kubectl 默认关闭。
-- 已验证 `tools/list`、目标 `tools/call` 和审计查询。
+- `tools/list` 只返回目标调用方需要的工具。
+- MySQL 查询命中预期 `tableAllowlist`，敏感字段有 `maskRules`。
+- Redis key 正则足够窄，未使用 `.*` 这类宽泛规则。
+- Gateway store 和环境变量已纳入备份与轮换流程。
+- 审计事件有保留、归档或清理策略。

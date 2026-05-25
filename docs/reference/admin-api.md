@@ -91,7 +91,7 @@ curl -s http://127.0.0.1:8080/admin/sources \
     "sourceType": "mysql",
     "displayName": "Main MySQL",
     "credential": {
-      "url": "mysql://gateway_reader:password@mysql.example.com:3306/app_db"
+      "url": "mysql://gateway_reader:password@mysql.internal:3306/app_db"
     },
     "credentialVersion": 1,
     "enabled": true
@@ -105,6 +105,6 @@ curl -s http://127.0.0.1:8080/admin/sources \
 除非正在开发 `agctl` 或做自动化集成，否则不要直接手写 Admin API 请求。常规生产变更应通过：
 
 ```bash
-cargo run --bin agctl -- diff -f example.yaml --endpoint http://127.0.0.1:8080 --admin-token "$GATEWAY_ADMIN_TOKEN"
-cargo run --bin agctl -- apply -f example.yaml --endpoint http://127.0.0.1:8080 --admin-token "$GATEWAY_ADMIN_TOKEN"
+/opt/action-gateway/bin/agctl diff -f order-api-gateway.yaml --endpoint http://127.0.0.1:8080 --admin-token "$GATEWAY_ADMIN_TOKEN"
+/opt/action-gateway/bin/agctl apply -f order-api-gateway.yaml --endpoint http://127.0.0.1:8080 --admin-token "$GATEWAY_ADMIN_TOKEN"
 ```

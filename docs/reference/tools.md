@@ -52,7 +52,7 @@ Policy resource name 使用表名，例如 `orders`。
 ```json
 {
   "source_name": "default",
-  "key": "demo:user:1",
+  "key": "orders:123",
   "limit": 20
 }
 ```
@@ -65,7 +65,7 @@ Policy resource name 使用表名，例如 `orders`。
 | `source_name` | 否 | Redis source，默认 `default` |
 | `limit` | 否 | 集合成员或 entries 返回上限，最终受 `maxMembers` 限制 |
 
-Policy resource name 使用 Redis key，可用通配符，例如 `demo:*`。
+Policy resource name 使用 Redis key，可用通配符，例如 `orders:*`。
 
 ## `kubernetes.list_resources`
 
