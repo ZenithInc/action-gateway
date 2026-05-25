@@ -86,6 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn app(state: AppState) -> Router {
     Router::new()
+        .route("/", post(handle_mcp).get(handle_mcp_stream))
         .route("/healthz", get(healthz))
         .route("/mcp", post(handle_mcp).get(handle_mcp_stream))
         .route("/mcp/", post(handle_mcp).get(handle_mcp_stream))
