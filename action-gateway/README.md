@@ -48,11 +48,14 @@ store 顶层字段：
 
 ## 诊断 CLI
 
-`sls-check` 用于验证 Alibaba Cloud SLS 凭证和 `GetLogsV2` 查询是否能正常响应。它从 `.env` 读取 `AccessKeyID`、`AccessKeySecret`、`SLS_ENDPOINT`、`SLS_PROJECT` 和 `SLS_LOGSTORE`，也支持通过命令行参数覆盖。
+`sls-check` 用于验证 Alibaba Cloud SLS source 凭证和 `GetLogsV2` 查询是否能正常响应。正式环境应读取 Gateway store 中的 `sourceType: "sls"` source；`--env-file` 只保留给项目贡献者做本地临时验证。
 
 ```bash
 cargo run --bin sls-check -- \
-  --env-file ../.env \
+  --store-file gateway-store.example.json \
+  --source-name sls-main \
+  --project sample-project \
+  --logstore app-logstore \
   --query 'content: "=======createOrderProcess=======data====="' \
   --from 1779852171 \
   --to 1779852172 \

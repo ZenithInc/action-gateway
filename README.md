@@ -68,7 +68,9 @@ Create `/etc/action-gateway/gateway-store.json`:
       "sourceType": "sls",
       "displayName": "Main SLS",
       "config": {
-        "endpoint": "cn-hangzhou.log.aliyuncs.com"
+        "endpoint": "cn-hangzhou.log.aliyuncs.com",
+        "project": "sample-project",
+        "logstore": "app-logstore"
       },
       "credential": {
         "accessKeyId": "LTAI...",

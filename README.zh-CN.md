@@ -68,7 +68,9 @@ Action Gateway 是一个面向 Agent 的受控 MCP 网关，用 policy 驱动的
       "sourceType": "sls",
       "displayName": "Main SLS",
       "config": {
-        "endpoint": "cn-hangzhou.log.aliyuncs.com"
+        "endpoint": "cn-hangzhou.log.aliyuncs.com",
+        "project": "sample-project",
+        "logstore": "app-logstore"
       },
       "credential": {
         "accessKeyId": "LTAI...",

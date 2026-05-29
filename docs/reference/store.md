@@ -70,7 +70,9 @@ SLS source 示例：
   "sourceType": "sls",
   "displayName": "Main SLS",
   "config": {
-    "endpoint": "cn-hangzhou.log.aliyuncs.com"
+    "endpoint": "cn-hangzhou.log.aliyuncs.com",
+    "project": "sample-project",
+    "logstore": "app-logstore"
   },
   "credential": {
     "accessKeyId": "LTAI...",

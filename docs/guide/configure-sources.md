@@ -161,7 +161,9 @@ redis://username:password@redis.internal:6379/0
   "sourceType": "sls",
   "displayName": "Main SLS",
   "config": {
-    "endpoint": "cn-hangzhou.log.aliyuncs.com"
+    "endpoint": "cn-hangzhou.log.aliyuncs.com",
+    "project": "sample-project",
+    "logstore": "app-logstore"
   },
   "credential": {
     "accessKeyId": "LTAI...",
@@ -173,39 +175,18 @@ redis://username:password@redis.internal:6379/0
 }
 ```
 
-`credentialVersion` 会进入工具响应和审计摘要。Gateway 不会把 AccessKey 或原始查询结果 payload 写入审计。
+`endpoint`、常用 `project`、常用 `logstore` 和凭证都应集中保存在 source 中。`logs.query_sls_logs` 调用仍需要传入 `project` 和 `logstore`，用于明确本次查询目标并匹配 `<project>/<logstore>` access policy。`credentialVersion` 会进入工具响应和审计摘要。Gateway 不会把 AccessKey 或原始查询结果 payload 写入审计。
 
 ### 用 `sls-check` 验证 SLS
 
-发布包和源码中都包含 `sls-check` 诊断 CLI，用于在接入 Gateway 前确认 SLS 凭证、endpoint、project、logstore 和查询语句能正常响应。
+发布包和源码中都包含 `sls-check` 诊断 CLI，用于在接入 Gateway 前确认 SLS source 凭证、endpoint、project、logstore 和查询语句能正常响应。正式环境应让它读取 Gateway store 中的 SLS source，避免把同一份配置再复制到 `.env`。
 
-本地 `.env` 可以使用这些 key：
-
-```bash
-AccessKeyID=LTAI...
-AccessKeySecret=<secret>
-SLS_ENDPOINT=cn-shanghai.log.aliyuncs.com
-SLS_PROJECT=sample-project
-SLS_LOGSTORE=app-logstore
-```
-
-源码环境中可直接运行：
-
-```bash
-cargo run --bin sls-check -- \
-  --env-file ../.env \
-  --query 'content: "=======createOrderProcess=======data====="' \
-  --from 1779852171 \
-  --to 1779852172 \
-  --line 20 \
-  --show-logs
-```
-
-发布包中使用二进制：
+如果 source 的 `config` 已包含 `project` 和 `logstore`，发布包中可以直接运行：
 
 ```bash
 ./sls-check \
-  --env-file .env \
+  --store-file /etc/action-gateway/gateway-store.json \
+  --source-name sls-main \
   --query 'content: "=======createOrderProcess=======data====="' \
   --from 1779852171 \
   --to 1779852172 \
@@ -213,7 +194,37 @@ cargo run --bin sls-check -- \
   --show-logs
 ```
 
-`from` 和 `to` 使用 Unix 秒，且必须满足 `from < to`。如果业务日志按北京时间描述，先按 UTC+8 换算时间戳；例如 `2026-05-27 11:22:51` 北京时间对应 `1779852171`。默认响应只返回摘要，调试时加 `--show-logs` 才会输出日志正文。
+如果没有把 `project` 或 `logstore` 写入 source，也可以只把查询目标作为参数传入，凭证仍从 source 读取：
+
+```bash
+./sls-check \
+  --store-file /etc/action-gateway/gateway-store.json \
+  --source-name sls-main \
+  --project sample-project \
+  --logstore app-logstore \
+  --query 'content: "=======createOrderProcess=======data====="' \
+  --from 1779852171 \
+  --to 1779852172 \
+  --line 20 \
+  --show-logs
+```
+
+源码环境中使用同样的 store/source 方式：
+
+```bash
+cargo run --bin sls-check -- \
+  --store-file gateway-store.example.json \
+  --source-name sls-main \
+  --project sample-project \
+  --logstore app-logstore \
+  --query 'content: "=======createOrderProcess=======data====="' \
+  --from 1779852171 \
+  --to 1779852172 \
+  --line 20 \
+  --show-logs
+```
+
+`from` 和 `to` 使用 Unix 秒，且必须满足 `from < to`。如果业务日志按北京时间描述，先按 UTC+8 换算时间戳；例如 `2026-05-27 11:22:51` 北京时间对应 `1779852171`。默认响应只返回摘要，调试时加 `--show-logs` 才会输出日志正文。`--env-file` 只保留给项目贡献者做本地临时验证，不是发布包推荐路径。
 
 ## 配置 Kubernetes source
 
