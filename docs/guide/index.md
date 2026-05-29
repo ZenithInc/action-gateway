@@ -11,7 +11,7 @@ access: public
 
 ## 推荐阅读
 
-1. [快速开始](/guide/getting-started/)
-2. [核心概念](/guide/concepts/)
-3. [Source 和 Allowlist](/configuration/sources-and-allowlists/)
-4. [权限和 agctl](/configuration/agctl/)
+1. [快速开始](/action-gateway/guide/getting-started/)
+2. [核心概念](/action-gateway/guide/concepts/)
+3. [Source 和 Allowlist](/action-gateway/configuration/sources-and-allowlists/)
+4. [权限和 agctl](/action-gateway/configuration/agctl/)

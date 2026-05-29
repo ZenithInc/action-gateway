@@ -263,6 +263,6 @@ curl -s http://127.0.0.1:8080/mcp \
 
 ## 下一步
 
-- [配置 Source 和 Allowlist](/configuration/sources-and-allowlists/)：接入更多 MySQL、Redis、SLS 或 Kubernetes。
-- [部署](/operations/deployment/)：把 Gateway 部署到开发、测试或生产环境。
-- [Codex / MCP Client](/clients/codex/)：把 API Key 配置到 Codex 或其他 MCP Client。
+- [配置 Source 和 Allowlist](/action-gateway/configuration/sources-and-allowlists/)：接入更多 MySQL、Redis、SLS 或 Kubernetes。
+- [部署](/action-gateway/operations/deployment/)：把 Gateway 部署到开发、测试或生产环境。
+- [Codex / MCP Client](/action-gateway/clients/codex/)：把 API Key 配置到 Codex 或其他 MCP Client。

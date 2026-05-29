@@ -47,7 +47,7 @@ Gateway store 可能包含数据库连接串、Redis URL、kubeconfig、API key 
 - Admin API 和 `agctl apply` 只允许 CI/CD、堡垒机或平台管理员访问。不要让 Agent 持有管理 token。
 - 审计日志写到 Agent 不可写的位置；生产环境优先使用外部日志、SIEM 或 append-only 存储保留管理变更和工具调用摘要。
 
-更完整的隔离原则见 [安全边界](/operations/security-boundary/)。
+更完整的隔离原则见 [安全边界](/action-gateway/operations/security-boundary/)。
 
 ## 最小运行命令
 

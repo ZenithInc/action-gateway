@@ -2,7 +2,7 @@
 
 `agctl` 是 Action Gateway 推荐的权限管理方式。你可以把 Principal、Role、RoleBinding 和 ApiKey 写成多文档 YAML，提交到 Git，再通过 Admin JSON API 应用到 Gateway。
 
-`agctl` 管理的是身份和 access policy。source 和 allowlist 的配置见 [配置 Source 和 Allowlist](/configuration/sources-and-allowlists/)。
+`agctl` 管理的是身份和 access policy。source 和 allowlist 的配置见 [配置 Source 和 Allowlist](/action-gateway/configuration/sources-and-allowlists/)。
 
 注意：`agctl` manifest 不替代 allowlist。manifest 授权某个 Principal 可以调用哪些 tool、访问哪些资源；allowlist 则限制这个 Gateway 实例最多允许触达哪些下游表、Redis key 或 Kubernetes 资源。调用必须同时通过 access policy 和 allowlist。
 

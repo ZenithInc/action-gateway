@@ -11,4 +11,4 @@ Action Gateway 暴露标准 HTTP JSON-RPC MCP endpoint。当前已验证 Codex �
 
 ## 页面
 
-- [Codex / MCP Client](/clients/codex/)
+- [Codex / MCP Client](/action-gateway/clients/codex/)

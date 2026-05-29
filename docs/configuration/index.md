@@ -11,5 +11,5 @@ access: public
 
 ## 页面
 
-- [Source 和 Allowlist](/configuration/sources-and-allowlists/)
-- [权限和 agctl](/configuration/agctl/)
+- [Source 和 Allowlist](/action-gateway/configuration/sources-and-allowlists/)
+- [权限和 agctl](/action-gateway/configuration/agctl/)

@@ -11,6 +11,6 @@ access: public
 
 ## 页面
 
-- [部署](/operations/deployment/)
-- [安全边界](/operations/security-boundary/)
-- [故障排查](/operations/troubleshooting/)
+- [部署](/action-gateway/operations/deployment/)
+- [安全边界](/action-gateway/operations/security-boundary/)
+- [故障排查](/action-gateway/operations/troubleshooting/)

@@ -1,6 +1,6 @@
 # 配置 Source 和 Allowlist
 
-本页说明如何为已部署的 Action Gateway 配置真实 MySQL、Redis、SLS 或 Kubernetes source。完成后，再用 [agctl](/configuration/agctl/) 给调用方授予权限。
+本页说明如何为已部署的 Action Gateway 配置真实 MySQL、Redis、SLS 或 Kubernetes source。完成后，再用 [agctl](/action-gateway/configuration/agctl/) 给调用方授予权限。
 
 ## 配置顺序
 

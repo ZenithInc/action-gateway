@@ -6,7 +6,7 @@ Action Gateway 目前只测试过 Codex 作为 MCP client。其他兼容 MCP 的
 
 先完成：
 
-1. [快速开始](/guide/getting-started/) 或 [部署](/operations/deployment/)，确认 Gateway 可用。
+1. [快速开始](/action-gateway/guide/getting-started/) 或 [部署](/action-gateway/operations/deployment/)，确认 Gateway 可用。
 2. 准备一个 `agk_<key_id>_<secret>` 格式的 Gateway API Key。
 
 ## Codex 配置
