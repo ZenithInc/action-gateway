@@ -1,0 +1,99 @@
+title = "Action Gateway"
+src_dir = "."
+out_dir = ".rustpress/dist"
+base = "/"
+
+[[nav]]
+text = "指南"
+link = "/guide/"
+
+[[nav.items]]
+text = "快速开始"
+link = "/guide/getting-started/"
+
+[[nav.items]]
+text = "核心概念"
+link = "/guide/concepts/"
+
+[[nav]]
+text = "配置"
+link = "/configuration/"
+
+[[nav.items]]
+text = "Source 和 Allowlist"
+link = "/configuration/sources-and-allowlists/"
+
+[[nav.items]]
+text = "权限和 agctl"
+link = "/configuration/agctl/"
+
+[[nav]]
+text = "客户端"
+link = "/clients/"
+
+[[nav.items]]
+text = "Codex / MCP Client"
+link = "/clients/codex/"
+
+[[nav]]
+text = "运维"
+link = "/operations/"
+
+[[nav.items]]
+text = "部署"
+link = "/operations/deployment/"
+
+[[nav.items]]
+text = "安全边界"
+link = "/operations/security-boundary/"
+
+[[nav.items]]
+text = "故障排查"
+link = "/operations/troubleshooting/"
+
+[[nav]]
+text = "参考"
+link = "/reference/tools/"
+
+[[nav.items]]
+text = "MCP Tools"
+link = "/reference/tools/"
+
+[[nav.items]]
+text = "文件存储结构"
+link = "/reference/store/"
+
+[[nav.items]]
+text = "agctl YAML"
+link = "/reference/agctl-yaml/"
+
+[[nav.items]]
+text = "Admin JSON API"
+link = "/reference/admin-api/"
+
+[locales.root]
+label = "简体中文"
+lang = "zh-CN"
+title = "Action Gateway"
+
+[theme]
+name = "default"
+skin = "light"
+allow_switch = true
+github_url = ""
+
+[markdown]
+mermaid = true
+code_highlight = true
+heading_anchors = true
+
+[search]
+enabled = true
+languages = ["zh", "en"]
+index_code = false
+
+[access]
+enabled = false
+mode = "mask"
+password = ""
+password_hint = ""

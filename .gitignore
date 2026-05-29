@@ -7,8 +7,7 @@ target/
 **/target/
 dist/
 **/dist/
-docs/.vitepress/cache/
-docs/.vitepress/dist/
+docs/.rustpress/
 
 # Local-only demo/test service
 fake-order-service/

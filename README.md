@@ -132,7 +132,8 @@ export REDIS_URL='redis://:password@redis.internal:6379/0'
 ## Documentation
 
 - [Getting Started](docs/guide/getting-started.md)
-- [Configure Sources and Allowlists](docs/guide/configure-sources.md)
-- [Deployment](docs/guide/deployment.md)
-- [MCP Client Setup](docs/guide/mcp-client.md)
+- [Configure Sources and Allowlists](docs/configuration/sources-and-allowlists.md)
+- [Permissions and agctl](docs/configuration/agctl.md)
+- [Deployment](docs/operations/deployment.md)
+- [MCP Client Setup](docs/clients/codex.md)
 - [Store Reference](docs/reference/store.md)

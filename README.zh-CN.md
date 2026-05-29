@@ -132,7 +132,8 @@ export REDIS_URL='redis://:password@redis.internal:6379/0'
 ## 文档
 
 - [快速开始](docs/guide/getting-started.md)
-- [配置 Source 和 Allowlist](docs/guide/configure-sources.md)
-- [部署建议](docs/guide/deployment.md)
-- [接入 MCP Client](docs/guide/mcp-client.md)
+- [配置 Source 和 Allowlist](docs/configuration/sources-and-allowlists.md)
+- [权限和 agctl](docs/configuration/agctl.md)
+- [部署建议](docs/operations/deployment.md)
+- [接入 MCP Client](docs/clients/codex.md)
 - [Store 结构](docs/reference/store.md)

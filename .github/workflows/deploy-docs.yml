@@ -6,8 +6,6 @@ on:
       - main
     paths:
       - 'docs/**'
-      - 'package.json'
-      - 'package-lock.json'
       - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
 
@@ -22,35 +20,32 @@ concurrency:
 
 jobs:
   build:
-    name: Build VitePress
+    name: Build RustPress
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:
           enablement: true
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install RustPress
+        run: cargo install --git https://github.com/ZenithInc/rust-press.git --rev cadcb4b942bbd6c79694e4841cdad25510e6c3bf --locked rustpress-cli
 
       - name: Build docs
-        run: npm run docs:build
-        env:
-          DOCS_BASE: /action-gateway/
+        run: rust-press build --config docs/rustpress.toml
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: docs/.vitepress/dist
+          path: docs/.rustpress/dist
 
   deploy:
     name: Deploy to GitHub Pages

@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIND_HOST="${BIND_HOST:-0.0.0.0}"
 DOCS_PORT_WAS_SET="${DOCS_PORT+x}${PORT+x}"
-DOCS_PORT="${DOCS_PORT:-${PORT:-5174}}"
+DOCS_PORT="${DOCS_PORT:-${PORT:-5177}}"
 
 detect_public_host() {
     local detected=""
@@ -75,14 +75,17 @@ choose_free_port() {
 }
 
 if [[ -z "${DOCS_PORT_WAS_SET}" ]]; then
-    DOCS_PORT="$(choose_free_port "${DOCS_PORT}" 5175 5199)"
+    DOCS_PORT="$(choose_free_port "${DOCS_PORT}" 5178 5199)"
 fi
 
 PUBLIC_HOST="$(detect_public_host)"
 URL_HOST="$(format_url_host "${PUBLIC_HOST}")"
+RUST_PRESS_BIN="$(command -v rust-press || true)"
 
-if [[ ! -x "${ROOT_DIR}/node_modules/.bin/vitepress" ]]; then
-    echo "Missing local VitePress dependency. Run npm install first." >&2
+if [[ -z "${RUST_PRESS_BIN}" ]]; then
+    echo "Missing rust-press CLI." >&2
+    echo "Install it with:" >&2
+    echo "  cargo install --git https://github.com/ZenithInc/rust-press.git --rev cadcb4b942bbd6c79694e4841cdad25510e6c3bf --locked rustpress-cli" >&2
     exit 1
 fi
 
@@ -92,4 +95,4 @@ echo
 echo "Press Ctrl+C to stop."
 
 cd "${ROOT_DIR}"
-exec "${ROOT_DIR}/node_modules/.bin/vitepress" dev docs --host "${BIND_HOST}" --port "${DOCS_PORT}" --strictPort
+exec "${RUST_PRESS_BIN}" dev --config "${ROOT_DIR}/docs/rustpress.toml" --host "${BIND_HOST}" --port "${DOCS_PORT}"
