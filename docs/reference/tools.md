@@ -12,7 +12,7 @@ Gateway 通过 `tools/list` 暴露 MCP tools。实际可调用范围还会受 AP
 | `kubernetes.get_resource` | `get` | `kubernetes` | 获取单个 Kubernetes 资源摘要 |
 | `kubernetes.rollout_status` | `rollout_status` / `rollout_history` | `kubernetes` | 查询 workload rollout 状态和历史 |
 | `kubernetes.query_pod_logs` | `logs` | `kubernetes` | 查询 allowlist Pod 日志 |
-| `logs.query_app_logs` | `query` | `app_logs` | 从 Redis 日志索引查询应用日志摘要 |
+| `logs.query_sls_logs` | `query` | `sls_logstore` | 查询阿里云 SLS Logstore 日志 |
 | `audit.query_approval_events` | `query` | `audit_events` | 查询认证、授权和动作审计事件 |
 
 `kubernetes.kubectl_read` 默认隐藏。只有设置 `KUBERNETES_ENABLE_RAW_KUBECTL=true` 时才会出现在 `tools/list` 中。
@@ -187,18 +187,22 @@ Policy action：
 
 Policy resource name 使用 `namespace/pods/pod_name`。
 
-## `logs.query_app_logs`
+## `logs.query_sls_logs`
 
-从 Redis `app_logs:*` 索引读取应用日志摘要。
+使用阿里云 SLS `GetLogsV2` 查询 Logstore。调用方直接提供 SLS 查询语句或 SQL；Gateway 不解析、不改写查询文本，只校验 source、资源授权、时间范围、长度和分页上限。
 
 ```json
 {
-  "source_name": "default",
-  "app_name": "billing-api",
-  "environment": "prod",
-  "trace_id": "trc_paid_summary_001",
-  "keyword": "12.00",
-  "limit": 20
+  "source_name": "sls-main",
+  "project": "sample-project",
+  "logstore": "app-logstore",
+  "from": 1627268185,
+  "to": 1627268245,
+  "query": "status: 401 | select count(*) as pv",
+  "line": 0,
+  "offset": 0,
+  "reverse": true,
+  "power_sql": false
 }
 ```
 
@@ -206,14 +210,19 @@ Policy resource name 使用 `namespace/pods/pod_name`。
 
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
-| `app_name` | 是 | 应用名 |
-| `source_name` | 否 | logs Redis source，默认 `default` |
-| `environment` | 否 | 环境名 |
-| `trace_id` | 否 | trace id |
-| `keyword` | 否 | 文本关键字 |
-| `limit` | 否 | 返回条数 |
+| `project` | 是 | SLS project |
+| `logstore` | 是 | SLS Logstore |
+| `from` | 是 | 查询开始时间，Unix 秒 |
+| `to` | 是 | 查询结束时间，Unix 秒，必须大于 `from` |
+| `query` | 是 | SLS 查询语句或分析 SQL，最大 16 KiB |
+| `source_name` | 否 | SLS source，默认 `default` |
+| `line` | 否 | 返回行数，`0..100`，默认 `100`；SQL 分析语句通常用 SQL `LIMIT` 分页 |
+| `offset` | 否 | 起始偏移，默认 `0` |
+| `reverse` | 否 | 是否按时间倒序返回，默认 `false` |
+| `topic` | 否 | SLS topic |
+| `power_sql` | 否 | 是否启用 Dedicated SQL，默认 `false` |
 
-Policy resource name 使用 `app_name`，例如 `billing-api`。
+Policy resource name 使用 `<project>/<logstore>`，例如 `sample-project/app-logstore`。
 
 ## `audit.query_approval_events`
 

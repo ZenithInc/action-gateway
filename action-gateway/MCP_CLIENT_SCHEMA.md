@@ -38,7 +38,7 @@
     "version": "0.1.0",
     "description": "Gateway exposing operational actions as MCP tools."
   },
-  "instructions": "Use tools/list to discover the actions visible to the authenticated Gateway API key and tools/call to invoke them. Source-backed tools accept an optional source_name. Data table queries use a registered MySQL source and require table policy. Redis key queries are read-only and require key policy. Kubernetes access is structured-tool-first and constrained by source, namespace, resource, and action policy; raw kubectl is hidden unless KUBERNETES_ENABLE_RAW_KUBECTL=true and should be reserved for break-glass diagnostics. Application log queries read bounded summaries from registered Redis log indexes."
+  "instructions": "Use tools/list to discover the actions visible to the authenticated Gateway API key and tools/call to invoke them. Source-backed tools accept an optional source_name. Data table queries use a registered MySQL source and require table policy. Redis key queries are read-only and require key policy. Kubernetes access is structured-tool-first and constrained by source, namespace, resource, and action policy; raw kubectl is hidden unless KUBERNETES_ENABLE_RAW_KUBECTL=true and should be reserved for break-glass diagnostics. SLS log queries use registered Alibaba Cloud Simple Log Service sources and require Logstore policy."
 }
 ```
 
@@ -87,7 +87,7 @@ These tools are returned by `tools/list` by default.
 | `kubernetes.get_resource` | Get Kubernetes Resource |
 | `kubernetes.rollout_status` | Kubernetes Rollout Status |
 | `kubernetes.query_pod_logs` | Query Pod Logs |
-| `logs.query_app_logs` | Query Application Logs |
+| `logs.query_sls_logs` | Query SLS Logs |
 | `audit.query_approval_events` | Query Approval Audit Events |
 
 `kubernetes.kubectl_read` is hidden by default and is only returned when `KUBERNETES_ENABLE_RAW_KUBECTL=true`.
@@ -398,49 +398,78 @@ Query allowlisted Kubernetes Pod logs through `kubectl logs`. Tail lines and out
 
 Runtime validation also requires a matching `kubernetesResourceAllowlist` entry in the Gateway store file for resource `pods` and action `logs`. `tail_lines` and `max_output_bytes` must not exceed the policy entry.
 
-## `logs.query_app_logs`
+## `logs.query_sls_logs`
 
-Query bounded application log summaries from Redis app log indexes by app, environment, trace id, keyword, or recent time window.
+Query Alibaba Cloud Simple Log Service logs with `GetLogsV2`. The caller provides the SLS search statement or analytic SQL directly; Gateway validates bounds and resource authorization but does not parse or rewrite the query text.
 
 ```json
 {
   "type": "object",
   "properties": {
-    "app_name": {
+    "source_name": {
       "type": "string",
-      "description": "Application/service name."
+      "description": "Optional logical SLS source name.",
+      "default": "default"
     },
-    "environment": {
+    "project": {
       "type": "string",
-      "description": "Optional runtime environment, such as prod or staging."
+      "description": "SLS project name."
     },
-    "trace_id": {
+    "logstore": {
       "type": "string",
-      "description": "Optional trace id."
+      "description": "SLS Logstore name."
     },
-    "keyword": {
-      "type": "string",
-      "description": "Optional keyword to search for."
-    },
-    "since": {
-      "type": "string",
-      "description": "Optional time window, such as 15m or 1h."
-    },
-    "limit": {
+    "from": {
       "type": "integer",
-      "minimum": 1,
-      "maximum": 200,
-      "default": 50
+      "minimum": 0,
+      "description": "Start of the query time range as Unix seconds."
+    },
+    "to": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "End of the query time range as Unix seconds. Must be greater than from."
+    },
+    "query": {
+      "type": "string",
+      "description": "SLS search statement or analytic SQL statement."
+    },
+    "line": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "default": 100
+    },
+    "offset": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "reverse": {
+      "type": "boolean",
+      "default": false
+    },
+    "topic": {
+      "type": "string",
+      "description": "Optional SLS topic."
+    },
+    "power_sql": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable SLS Dedicated SQL."
     }
   },
   "required": [
-    "app_name"
+    "project",
+    "logstore",
+    "from",
+    "to",
+    "query"
   ],
   "additionalProperties": false
 }
 ```
 
-Runtime validation also requires valid app/environment names and an existing Redis log index key. Without `environment`, the index is `app_logs:index:app:<app_name>`. With `environment`, the index is `app_logs:index:app_env:<app_name>:<environment>`.
+Runtime validation requires a configured `sourceType: "sls"` source. `line` must be between `0` and `100`, `from` must be less than `to`, and `query` must be 16 KiB or smaller. Policy resource names use `<project>/<logstore>` with resource type `sls_logstore`.
 
 ## `audit.query_approval_events`
 

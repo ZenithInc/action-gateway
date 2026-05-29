@@ -68,7 +68,7 @@ Supported resources:
 | `table` | `data.query_table` |
 | `redis_key` | `redis.query_key` |
 | `kubernetes` | Kubernetes tools |
-| `app_logs` | `logs.query_app_logs` |
+| `sls_logstore` | `logs.query_sls_logs` |
 | `audit_events` | `audit.query_approval_events` |
 
 ## RoleBinding

@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeSet, HashSet},
     process::Stdio,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
 
 use action_gateway_v2::store::FileStore;
@@ -21,7 +21,10 @@ use tokio::{
     time,
 };
 
-use crate::{audit, control_plane};
+use crate::{
+    audit, control_plane,
+    sls::{GetLogsV2Request, GetLogsV2Response, SlsClient, SlsCredentials},
+};
 
 pub const TOOL_QUERY_TABLE_DATA: &str = "data.query_table";
 pub const TOOL_QUERY_REDIS_KEY: &str = "redis.query_key";
@@ -30,7 +33,7 @@ pub const TOOL_GET_KUBERNETES_RESOURCE: &str = "kubernetes.get_resource";
 pub const TOOL_KUBERNETES_ROLLOUT_STATUS: &str = "kubernetes.rollout_status";
 pub const TOOL_RUN_KUBECTL_READ: &str = "kubernetes.kubectl_read";
 pub const TOOL_QUERY_POD_LOGS: &str = "kubernetes.query_pod_logs";
-pub const TOOL_QUERY_APP_LOGS: &str = "logs.query_app_logs";
+pub const TOOL_QUERY_SLS_LOGS: &str = "logs.query_sls_logs";
 
 pub fn list_tools() -> Value {
     let mut tools = vec![
@@ -289,45 +292,65 @@ pub fn list_tools() -> Value {
                 }
         }),
         json!({
-                "name": TOOL_QUERY_APP_LOGS,
-                "title": "Query Application Logs",
-                "description": "Query bounded application log summaries from Redis app log indexes by app, environment, trace id, keyword, or recent time window.",
+                "name": TOOL_QUERY_SLS_LOGS,
+                "title": "Query SLS Logs",
+                "description": "Query Alibaba Cloud Simple Log Service logs with GetLogsV2. The caller provides the SLS query or SQL directly; the Gateway validates bounds and resource authorization but does not rewrite query text.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "source_name": {
                             "type": "string",
-                            "description": "Optional logical Redis log source name.",
+                            "description": "Optional logical SLS source name.",
                             "default": "default"
                         },
-                        "app_name": {
+                        "project": {
                             "type": "string",
-                            "description": "Application/service name."
+                            "description": "SLS project name."
                         },
-                        "environment": {
+                        "logstore": {
                             "type": "string",
-                            "description": "Optional runtime environment, such as prod or staging."
+                            "description": "SLS Logstore name."
                         },
-                        "trace_id": {
-                            "type": "string",
-                            "description": "Optional trace id."
-                        },
-                        "keyword": {
-                            "type": "string",
-                            "description": "Optional keyword to search for."
-                        },
-                        "since": {
-                            "type": "string",
-                            "description": "Optional time window, such as 15m or 1h."
-                        },
-                        "limit": {
+                        "from": {
                             "type": "integer",
-                            "minimum": 1,
-                            "maximum": 200,
-                            "default": 50
+                            "minimum": 0,
+                            "description": "Start of the query time range as Unix seconds."
+                        },
+                        "to": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "End of the query time range as Unix seconds. Must be greater than from."
+                        },
+                        "query": {
+                            "type": "string",
+                            "description": "SLS search statement or analytic SQL statement."
+                        },
+                        "line": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100,
+                            "default": 100
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "default": 0
+                        },
+                        "reverse": {
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "topic": {
+                            "type": "string",
+                            "description": "Optional SLS topic."
+                        },
+                        "power_sql": {
+                            "type": "boolean",
+                            "default": false,
+                            "description": "Enable SLS Dedicated SQL."
                         }
                     },
-                    "required": ["app_name"],
+                    "required": ["project", "logstore", "from", "to", "query"],
                     "additionalProperties": false
                 }
         }),
@@ -448,16 +471,20 @@ pub async fn call_tool_for_auth(
     let (arguments, authorization) =
         match authorize_tool_call(store, auth, name, arguments.clone()).await {
             Ok(authorization) => authorization,
-            Err(message) => return Ok(tool_argument_error(name, &message, &arguments)),
+            Err(message) => {
+                let safe_arguments = safe_tool_arguments(name, &arguments);
+                return Ok(tool_argument_error(name, &message, &safe_arguments));
+            }
         };
     if let Some((scope, decision)) = &authorization
         && !decision.allowed
     {
+        let safe_arguments = safe_tool_arguments(name, &arguments);
         return Ok(tool_error_result_with_authorization(
             name,
             "not_allowed",
             &decision.reason,
-            &arguments,
+            &safe_arguments,
             scope,
             decision,
         ));
@@ -471,7 +498,7 @@ pub async fn call_tool_for_auth(
         TOOL_KUBERNETES_ROLLOUT_STATUS => kubernetes_rollout_status(store, &arguments).await,
         TOOL_RUN_KUBECTL_READ => run_kubectl_read(store, &arguments).await,
         TOOL_QUERY_POD_LOGS => query_pod_logs(store, &arguments).await,
-        TOOL_QUERY_APP_LOGS => query_app_logs(store, redis, &arguments).await,
+        TOOL_QUERY_SLS_LOGS => query_sls_logs(store, &arguments).await,
         audit::TOOL_QUERY_APPROVAL_AUDIT_EVENTS => {
             audit::query_approval_audit_events(store, &arguments).await
         }
@@ -482,6 +509,13 @@ pub async fn call_tool_for_auth(
         Some((scope, decision)) => with_authorization_summary(result, &scope, &decision),
         None => result,
     })
+}
+
+fn safe_tool_arguments(tool_name: &str, arguments: &Value) -> Value {
+    match tool_name {
+        TOOL_QUERY_SLS_LOGS => sls_arguments_summary(arguments),
+        _ => arguments.clone(),
+    }
 }
 
 async fn authorize_tool_call(
@@ -599,13 +633,13 @@ fn tool_authorization_scope(
                     .join(" ")
             }),
         ),
-        TOOL_QUERY_APP_LOGS => (
+        TOOL_QUERY_SLS_LOGS => (
             "query".to_string(),
-            Some("app_logs".to_string()),
-            arguments
-                .get("app_name")
-                .and_then(Value::as_str)
-                .map(str::to_string),
+            Some("sls_logstore".to_string()),
+            sls_logstore_scope_name(
+                arguments.get("project").and_then(Value::as_str),
+                arguments.get("logstore").and_then(Value::as_str),
+            ),
         ),
         audit::TOOL_QUERY_APPROVAL_AUDIT_EVENTS => (
             "query".to_string(),
@@ -635,6 +669,10 @@ fn kubernetes_resource_scope_name(
         resource?,
         name.unwrap_or("*")
     ))
+}
+
+fn sls_logstore_scope_name(project: Option<&str>, logstore: Option<&str>) -> Option<String> {
+    Some(format!("{}/{}", project?, logstore?))
 }
 
 fn normalize_kubernetes_resource_name_lossy(resource: &str) -> String {
@@ -1116,122 +1154,116 @@ async fn query_pod_logs(store: &FileStore, arguments: &Value) -> Value {
     }
 }
 
-const DEFAULT_APP_LOG_LIMIT: usize = 50;
-const MAX_APP_LOG_LIMIT: usize = 200;
-const MAX_APP_LOG_CANDIDATES: usize = 1000;
-const MAX_APP_LOG_ENTRY_BYTES: usize = 16_384;
-const MAX_APP_LOG_TOTAL_BYTES: usize = 65_536;
-const MAX_APP_LOG_MESSAGE_CHARS: usize = 512;
-const MAX_APP_LOG_FIELD_VALUE_CHARS: usize = 256;
+const DEFAULT_SLS_LINE: usize = 100;
+const MAX_SLS_LINE: usize = 100;
+const MAX_SLS_QUERY_BYTES: usize = 16_384;
+const MAX_SLS_TOPIC_BYTES: usize = 256;
+const MAX_SLS_NAME_BYTES: usize = 128;
 
-async fn query_app_logs(store: &FileStore, redis: &RedisClient, arguments: &Value) -> Value {
+async fn query_sls_logs(store: &FileStore, arguments: &Value) -> Value {
+    let safe_arguments = sls_arguments_summary(arguments);
     let source_ref = match source_ref_from_tool_arguments(arguments) {
         Ok(source_ref) => source_ref,
-        Err(message) => return tool_argument_error(TOOL_QUERY_APP_LOGS, &message, arguments),
+        Err(message) => return tool_argument_error(TOOL_QUERY_SLS_LOGS, &message, &safe_arguments),
     };
-    let query = match parse_app_log_query(arguments) {
+    let query = match parse_sls_log_query(arguments) {
         Ok(query) => query,
-        Err(message) => return tool_argument_error(TOOL_QUERY_APP_LOGS, &message, arguments),
+        Err(message) => return tool_argument_error(TOOL_QUERY_SLS_LOGS, &message, &safe_arguments),
+    };
+    let (client, credential_version) = match sls_client_for_source(store, &source_ref).await {
+        Ok(client) => client,
+        Err(message) => {
+            return tool_error_result(
+                TOOL_QUERY_SLS_LOGS,
+                "query_failed",
+                &message,
+                &safe_arguments,
+            );
+        }
     };
 
-    let (source_redis, credential_version) =
-        match redis_client_for_source(store, &source_ref, "logs_redis").await {
-            Ok((Some(source_redis), credential_version)) => (source_redis, credential_version),
-            Ok((None, credential_version)) => (redis.clone(), credential_version),
-            Err(message) => {
-                return tool_error_result(TOOL_QUERY_APP_LOGS, "query_failed", &message, arguments);
-            }
-        };
-
-    match execute_app_log_query(&source_redis, &query).await {
-        Ok(read) => app_log_query_result(source_ref, credential_version, query, read, arguments),
-        Err(AppLogQueryError::IndexMissing) => tool_error_result(
-            TOOL_QUERY_APP_LOGS,
-            "not_allowed",
-            "application log index is not available",
-            arguments,
-        ),
-        Err(AppLogQueryError::QueryFailed(message)) => tool_error_result(
-            TOOL_QUERY_APP_LOGS,
+    match client.get_logs_v2(&query).await {
+        Ok(read) => sls_log_query_result(source_ref, credential_version, &query, read),
+        Err(error) => tool_error_result(
+            TOOL_QUERY_SLS_LOGS,
             "query_failed",
-            &format!("application log query failed: {message}"),
-            arguments,
+            &format!("SLS log query failed: {error}"),
+            &safe_arguments,
         ),
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct AppLogQuery {
-    app_name: String,
-    environment: Option<String>,
-    trace_id: Option<String>,
-    keyword: Option<String>,
-    since: Option<String>,
-    min_score_millis: Option<i64>,
-    limit: usize,
-    index_key: String,
+fn sls_arguments_summary(arguments: &Value) -> Value {
+    let mut summary = serde_json::Map::new();
+    for field in [
+        "source_name",
+        "project",
+        "logstore",
+        "from",
+        "to",
+        "line",
+        "offset",
+        "reverse",
+        "topic",
+        "power_sql",
+    ] {
+        if let Some(value) = arguments.get(field) {
+            summary.insert(field.to_string(), value.clone());
+        }
+    }
+    summary.insert(
+        "queryPresent".to_string(),
+        Value::Bool(arguments.get("query").is_some()),
+    );
+
+    Value::Object(summary)
 }
 
-#[derive(Debug, Clone, PartialEq)]
-struct AppLogRead {
-    entries: Vec<Value>,
-    scanned_count: usize,
-    returned_count: usize,
-    truncated: bool,
-}
+fn parse_sls_log_query(arguments: &Value) -> Result<GetLogsV2Request, String> {
+    let project = required_string_argument(arguments, "project")?.to_string();
+    validate_sls_name(&project, "project")?;
+    let logstore = required_string_argument(arguments, "logstore")?.to_string();
+    validate_sls_name(&logstore, "logstore")?;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum AppLogQueryError {
-    IndexMissing,
-    QueryFailed(String),
-}
+    let from = required_u64_argument(arguments, "from")?;
+    let to = required_u64_argument(arguments, "to")?;
+    if from >= to {
+        return Err("from must be less than to".to_string());
+    }
 
-fn parse_app_log_query(arguments: &Value) -> Result<AppLogQuery, String> {
-    let app_name = required_string_argument(arguments, "app_name")?.to_string();
-    validate_app_log_name(&app_name, "app_name", 128)?;
-
-    let environment = optional_string_argument(arguments, "environment")?
-        .map(|environment| {
-            validate_app_log_name(environment, "environment", 64)?;
-            Ok::<_, String>(environment.to_string())
+    let query = required_string_argument(arguments, "query")?.to_string();
+    validate_sls_query_text(&query)?;
+    let line =
+        optional_usize_argument(arguments, "line", 0, MAX_SLS_LINE)?.unwrap_or(DEFAULT_SLS_LINE);
+    let offset = optional_usize_nonnegative_argument(arguments, "offset")?.unwrap_or_default();
+    let reverse = parse_bool_argument(arguments, "reverse", false)?;
+    let topic = optional_string_argument(arguments, "topic")?
+        .map(|topic| {
+            validate_sls_topic(topic)?;
+            Ok::<_, String>(topic.to_string())
         })
         .transpose()?;
-    let trace_id = optional_string_argument(arguments, "trace_id")?
-        .map(|trace_id| {
-            validate_app_log_text(trace_id, "trace_id", 128)?;
-            Ok::<_, String>(trace_id.to_string())
-        })
-        .transpose()?;
-    let keyword = optional_string_argument(arguments, "keyword")?
-        .map(|keyword| {
-            validate_app_log_text(keyword, "keyword", 128)?;
-            Ok::<_, String>(keyword.to_string())
-        })
-        .transpose()?;
-    let since = optional_string_argument(arguments, "since")?.map(str::to_string);
-    let min_score_millis = since
-        .as_deref()
-        .map(parse_app_log_since_millis)
-        .transpose()?;
-    let limit = optional_usize_argument(arguments, "limit", 1, MAX_APP_LOG_LIMIT)?
-        .unwrap_or(DEFAULT_APP_LOG_LIMIT);
-    let index_key = app_log_index_key(&app_name, environment.as_deref());
+    let power_sql = parse_bool_argument(arguments, "power_sql", false)?;
 
-    Ok(AppLogQuery {
-        app_name,
-        environment,
-        trace_id,
-        keyword,
-        since,
-        min_score_millis,
-        limit,
-        index_key,
+    Ok(GetLogsV2Request {
+        project,
+        logstore,
+        from,
+        to,
+        query,
+        line,
+        offset,
+        reverse,
+        topic,
+        power_sql,
     })
 }
 
-fn validate_app_log_name(value: &str, name: &str, max_bytes: usize) -> Result<(), String> {
-    if value.len() > max_bytes {
-        return Err(format!("{name} must be {max_bytes} bytes or fewer"));
+fn validate_sls_name(value: &str, name: &str) -> Result<(), String> {
+    if value.len() > MAX_SLS_NAME_BYTES {
+        return Err(format!(
+            "{name} must be {MAX_SLS_NAME_BYTES} bytes or fewer"
+        ));
     }
     if !value
         .chars()
@@ -1245,298 +1277,74 @@ fn validate_app_log_name(value: &str, name: &str, max_bytes: usize) -> Result<()
     Ok(())
 }
 
-fn validate_app_log_text(value: &str, name: &str, max_chars: usize) -> Result<(), String> {
-    if value.chars().count() > max_chars {
-        return Err(format!("{name} must be {max_chars} characters or fewer"));
+fn validate_sls_query_text(value: &str) -> Result<(), String> {
+    if value.len() > MAX_SLS_QUERY_BYTES {
+        return Err(format!(
+            "query must be {MAX_SLS_QUERY_BYTES} bytes or fewer"
+        ));
     }
-    if value.chars().any(char::is_control) {
-        return Err(format!("{name} must not contain control characters"));
+    if value
+        .chars()
+        .any(|character| character.is_control() && !matches!(character, '\n' | '\r' | '\t'))
+    {
+        return Err("query must not contain control characters".to_string());
     }
 
     Ok(())
 }
 
-fn parse_app_log_since_millis(value: &str) -> Result<i64, String> {
-    let duration_millis = parse_app_log_duration_millis(value)?;
-    let now_millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|error| format!("system clock is before UNIX epoch: {error}"))?
-        .as_millis();
-    let min_score = now_millis.saturating_sub(u128::from(duration_millis));
-
-    i64::try_from(min_score).map_err(|_| "current time is too large".to_string())
-}
-
-fn parse_app_log_duration_millis(value: &str) -> Result<u64, String> {
-    if value.is_empty() || value.len() > 32 {
-        return Err("since must be a duration such as 15m or 1h".to_string());
+fn validate_sls_topic(value: &str) -> Result<(), String> {
+    if value.len() > MAX_SLS_TOPIC_BYTES {
+        return Err(format!(
+            "topic must be {MAX_SLS_TOPIC_BYTES} bytes or fewer"
+        ));
     }
-
-    let split_index = value
-        .find(|character: char| !character.is_ascii_digit())
-        .ok_or_else(|| "since must be a duration such as 15m or 1h".to_string())?;
-    let (amount, unit) = value.split_at(split_index);
-    if amount.is_empty()
-        || unit.is_empty()
-        || unit.chars().any(|character| character.is_ascii_digit())
+    if value
+        .chars()
+        .any(|character| character.is_control() && !matches!(character, '\n' | '\r' | '\t'))
     {
-        return Err("since must be a duration such as 15m or 1h".to_string());
+        return Err("topic must not contain control characters".to_string());
     }
 
-    let amount = amount
-        .parse::<u64>()
-        .map_err(|_| "since must be a duration such as 15m or 1h".to_string())?;
-    if amount == 0 {
-        return Err("since must be greater than zero".to_string());
-    }
-    let multiplier = match unit {
-        "ms" => 1,
-        "s" => 1_000,
-        "m" => 60_000,
-        "h" => 3_600_000,
-        "d" => 86_400_000,
-        _ => return Err("since must be a duration such as 15m or 1h".to_string()),
-    };
-
-    amount
-        .checked_mul(multiplier)
-        .ok_or_else(|| "since duration is too large".to_string())
+    Ok(())
 }
 
-fn app_log_index_key(app_name: &str, environment: Option<&str>) -> String {
-    match environment {
-        Some(environment) => format!("app_logs:index:app_env:{app_name}:{environment}"),
-        None => format!("app_logs:index:app:{app_name}"),
-    }
-}
-
-async fn execute_app_log_query(
-    redis: &RedisClient,
-    query: &AppLogQuery,
-) -> Result<AppLogRead, AppLogQueryError> {
-    let mut connection = redis
-        .get_multiplexed_async_connection()
-        .await
-        .map_err(|error| AppLogQueryError::QueryFailed(error.to_string()))?;
-
-    let exists = redis::cmd("EXISTS")
-        .arg(&query.index_key)
-        .query_async::<bool>(&mut connection)
-        .await
-        .map_err(|error| AppLogQueryError::QueryFailed(error.to_string()))?;
-    if !exists {
-        return Err(AppLogQueryError::IndexMissing);
-    }
-
-    let min_score = query
-        .min_score_millis
-        .map_or_else(|| "-inf".to_string(), |score| score.to_string());
-    let candidate_limit = app_log_candidate_limit(query.limit);
-    let ids = redis::cmd("ZREVRANGEBYSCORE")
-        .arg(&query.index_key)
-        .arg("+inf")
-        .arg(min_score)
-        .arg("LIMIT")
-        .arg(0)
-        .arg(candidate_limit)
-        .query_async::<Vec<String>>(&mut connection)
-        .await
-        .map_err(|error| AppLogQueryError::QueryFailed(error.to_string()))?;
-
-    let mut entries = Vec::new();
-    let mut total_output_bytes = 0_usize;
-    let mut scanned_count = 0_usize;
-    let mut truncated = false;
-
-    for id in &ids {
-        scanned_count += 1;
-        let entry_key = format!("app_logs:entry:{id}");
-        let Some(bytes) = redis::cmd("GET")
-            .arg(&entry_key)
-            .query_async::<Option<Vec<u8>>>(&mut connection)
-            .await
-            .map_err(|error| AppLogQueryError::QueryFailed(error.to_string()))?
-        else {
-            continue;
-        };
-        if bytes.len() > MAX_APP_LOG_ENTRY_BYTES {
-            return Err(AppLogQueryError::QueryFailed(format!(
-                "log entry {id} exceeds max entry size {MAX_APP_LOG_ENTRY_BYTES} bytes"
-            )));
-        }
-
-        let raw = String::from_utf8(bytes).map_err(|error| {
-            AppLogQueryError::QueryFailed(format!("log entry {id} is not valid UTF-8: {error}"))
-        })?;
-        let value = serde_json::from_str::<Value>(&raw).map_err(|error| {
-            AppLogQueryError::QueryFailed(format!("log entry {id} is not valid JSON: {error}"))
-        })?;
-        if !app_log_entry_matches(query, &value) {
-            continue;
-        }
-
-        let summary = summarize_app_log_entry(&value).map_err(AppLogQueryError::QueryFailed)?;
-        let summary_bytes = serde_json::to_vec(&summary)
-            .map_err(|error| AppLogQueryError::QueryFailed(error.to_string()))?
-            .len();
-        if total_output_bytes.saturating_add(summary_bytes) > MAX_APP_LOG_TOTAL_BYTES {
-            truncated = true;
-            break;
-        }
-
-        total_output_bytes += summary_bytes;
-        entries.push(summary);
-        if entries.len() >= query.limit {
-            truncated = scanned_count < ids.len() || ids.len() >= candidate_limit;
-            break;
-        }
-    }
-
-    if ids.len() >= candidate_limit && entries.len() < query.limit {
-        truncated = true;
-    }
-
-    Ok(AppLogRead {
-        returned_count: entries.len(),
-        entries,
-        scanned_count,
-        truncated,
-    })
-}
-
-fn app_log_candidate_limit(limit: usize) -> usize {
-    limit
-        .saturating_mul(10)
-        .clamp(limit, MAX_APP_LOG_CANDIDATES)
-}
-
-fn app_log_entry_matches(query: &AppLogQuery, value: &Value) -> bool {
-    if value.get("app_name").and_then(Value::as_str) != Some(query.app_name.as_str()) {
-        return false;
-    }
-    if let Some(environment) = &query.environment
-        && value.get("environment").and_then(Value::as_str) != Some(environment.as_str())
-    {
-        return false;
-    }
-    if let Some(trace_id) = &query.trace_id
-        && value.get("trace_id").and_then(Value::as_str) != Some(trace_id.as_str())
-    {
-        return false;
-    }
-    if let Some(keyword) = &query.keyword {
-        return app_log_entry_contains_keyword(value, keyword);
-    }
-
-    true
-}
-
-fn app_log_entry_contains_keyword(value: &Value, keyword: &str) -> bool {
-    let keyword = keyword.to_ascii_lowercase();
-    for field in ["level", "trace_id", "message"] {
-        if value
-            .get(field)
-            .and_then(Value::as_str)
-            .is_some_and(|value| value.to_ascii_lowercase().contains(&keyword))
-        {
-            return true;
-        }
-    }
-    value
-        .get("fields")
-        .and_then(|fields| serde_json::to_string(fields).ok())
-        .is_some_and(|fields| fields.to_ascii_lowercase().contains(&keyword))
-}
-
-fn summarize_app_log_entry(value: &Value) -> Result<Value, String> {
-    let id = required_log_entry_string(value, "id")?;
-    let timestamp = required_log_entry_string(value, "timestamp")?;
-    let level = required_log_entry_string(value, "level")?;
-    let message = required_log_entry_string(value, "message")?;
-    let trace_id = value.get("trace_id").and_then(Value::as_str);
-    let app_name = value.get("app_name").and_then(Value::as_str);
-    let environment = value.get("environment").and_then(Value::as_str);
-    let fields = value
-        .get("fields")
-        .map(summarize_app_log_fields)
-        .unwrap_or_else(|| Value::Object(serde_json::Map::new()));
-
-    Ok(json!({
-        "id": truncate_string(id, 128),
-        "timestamp": truncate_string(timestamp, 64),
-        "level": truncate_string(level, 32),
-        "appName": app_name.map(|value| truncate_string(value, 128)),
-        "environment": environment.map(|value| truncate_string(value, 64)),
-        "traceId": trace_id.map(|value| truncate_string(value, 128)),
-        "message": truncate_string(message, MAX_APP_LOG_MESSAGE_CHARS),
-        "fields": fields
-    }))
-}
-
-fn required_log_entry_string<'a>(value: &'a Value, name: &str) -> Result<&'a str, String> {
-    value
-        .get(name)
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| format!("log entry missing string field {name}"))
-}
-
-fn summarize_app_log_fields(value: &Value) -> Value {
-    let Some(object) = value.as_object() else {
-        return Value::Object(serde_json::Map::new());
-    };
-
-    let mut keys = object.keys().collect::<Vec<_>>();
-    keys.sort();
-    let mut summary = serde_json::Map::new();
-    for key in keys.into_iter().take(32) {
-        let Some(value) = object.get(key) else {
-            continue;
-        };
-        summary.insert(
-            key.chars().take(128).collect::<String>(),
-            truncate_json_string(value, MAX_APP_LOG_FIELD_VALUE_CHARS),
-        );
-    }
-
-    Value::Object(summary)
-}
-
-fn app_log_query_result(
+fn sls_log_query_result(
     source: control_plane::SourceRef,
     credential_version: Option<i64>,
-    query: AppLogQuery,
-    read: AppLogRead,
-    arguments: &Value,
+    query: &GetLogsV2Request,
+    read: GetLogsV2Response,
 ) -> Value {
     json!({
         "content": [
             {
                 "type": "text",
                 "text": format!(
-                    "{TOOL_QUERY_APP_LOGS}: returned {} log event(s) for {}",
-                    read.returned_count,
-                    query.app_name
+                    "{TOOL_QUERY_SLS_LOGS}: returned {} log event(s) from {}/{}",
+                    read.count,
+                    query.project,
+                    query.logstore
                 )
             }
         ],
         "structuredContent": {
             "status": "succeeded",
-            "action": TOOL_QUERY_APP_LOGS,
+            "action": TOOL_QUERY_SLS_LOGS,
             "sourceName": source.source_name,
             "credentialVersion": credential_version,
-            "appName": query.app_name,
-            "environment": query.environment,
-            "traceId": query.trace_id,
-            "keywordPresent": query.keyword.is_some(),
-            "since": query.since,
-            "indexKey": query.index_key,
-            "limit": query.limit,
-            "scannedCount": read.scanned_count,
-            "returnedCount": read.returned_count,
-            "truncated": read.truncated,
-            "logs": read.entries,
-            "receivedArguments": arguments
+            "project": query.project,
+            "logstore": query.logstore,
+            "queryPresent": true,
+            "from": query.from,
+            "to": query.to,
+            "line": query.line,
+            "offset": query.offset,
+            "reverse": query.reverse,
+            "topic": query.topic,
+            "powerSql": query.power_sql,
+            "count": read.count,
+            "progress": read.progress,
+            "logs": read.logs
         },
         "isError": false
     })
@@ -1957,6 +1765,16 @@ fn parse_bool_argument(arguments: &Value, name: &str, default: bool) -> Result<b
     }
 }
 
+fn required_u64_argument(arguments: &Value, name: &str) -> Result<u64, String> {
+    match arguments.get(name) {
+        Some(Value::Number(number)) => number
+            .as_u64()
+            .ok_or_else(|| format!("{name} must be a non-negative integer")),
+        Some(_) => Err(format!("{name} must be a non-negative integer")),
+        None => Err(format!("missing required argument: {name}")),
+    }
+}
+
 fn parse_u64_argument(
     arguments: &Value,
     name: &str,
@@ -2017,6 +1835,25 @@ fn optional_usize_argument(
     if value < min as u64 || value > max as u64 {
         return Err(format!("{name} must be between {min} and {max}"));
     }
+
+    usize::try_from(value)
+        .map(Some)
+        .map_err(|_| format!("{name} is too large"))
+}
+
+fn optional_usize_nonnegative_argument(
+    arguments: &Value,
+    name: &str,
+) -> Result<Option<usize>, String> {
+    let Some(value) = arguments.get(name) else {
+        return Ok(None);
+    };
+    let value = match value {
+        Value::Number(number) => number
+            .as_u64()
+            .ok_or_else(|| format!("{name} must be a non-negative integer"))?,
+        _ => return Err(format!("{name} must be a non-negative integer")),
+    };
 
     usize::try_from(value)
         .map(Some)
@@ -3060,6 +2897,36 @@ async fn redis_client_for_source(
         RedisClient::open(url).map_err(|error| format!("failed to open redis source: {error}"))?;
 
     Ok((Some(client), runtime.credential_version))
+}
+
+async fn sls_client_for_source(
+    store: &FileStore,
+    source: &control_plane::SourceRef,
+) -> Result<(SlsClient, Option<i64>), String> {
+    let runtime = load_source_runtime_config(store, source, "sls")
+        .await?
+        .ok_or_else(|| {
+            "sls source credential must be configured in the Gateway store file".to_string()
+        })?;
+    let endpoint = source_secret_string(&runtime, &["endpoint"])
+        .ok_or_else(|| "sls source config must include endpoint".to_string())?;
+    let access_key_id = source_secret_string(&runtime, &["accessKeyId", "access_key_id"])
+        .ok_or_else(|| "sls source credential must include accessKeyId".to_string())?;
+    let access_key_secret =
+        source_secret_string(&runtime, &["accessKeySecret", "access_key_secret"])
+            .ok_or_else(|| "sls source credential must include accessKeySecret".to_string())?;
+    let security_token = source_secret_string(&runtime, &["securityToken", "security_token"]);
+    let client = SlsClient::new(
+        &endpoint,
+        SlsCredentials {
+            access_key_id,
+            access_key_secret,
+            security_token,
+        },
+    )
+    .map_err(|error| error.to_string())?;
+
+    Ok((client, runtime.credential_version))
 }
 
 async fn load_source_runtime_config(
@@ -5091,7 +4958,8 @@ mod tests {
         assert!(tool_names.contains(&TOOL_GET_KUBERNETES_RESOURCE));
         assert!(tool_names.contains(&TOOL_KUBERNETES_ROLLOUT_STATUS));
         assert!(tool_names.contains(&TOOL_QUERY_POD_LOGS));
-        assert!(tool_names.contains(&TOOL_QUERY_APP_LOGS));
+        assert!(tool_names.contains(&TOOL_QUERY_SLS_LOGS));
+        assert!(!tool_names.contains(&"logs.query_app_logs"));
         assert!(tool_names.contains(&audit::TOOL_QUERY_APPROVAL_AUDIT_EVENTS));
         assert_eq!(
             tool_names.contains(&TOOL_RUN_KUBECTL_READ),
@@ -5137,132 +5005,191 @@ mod tests {
     }
 
     #[test]
-    fn parses_app_log_query_defaults_and_filters() {
-        let query = parse_app_log_query(&json!({
-            "app_name": "billing-api",
-            "environment": "prod",
-            "trace_id": "trc_paid_summary_001",
-            "keyword": "summary",
-            "limit": 10
+    fn parses_sls_log_query_defaults_and_options() {
+        let query = parse_sls_log_query(&json!({
+            "project": "sample-project",
+            "logstore": "sample-logstore",
+            "from": 1_627_268_185_u64,
+            "to": 1_627_268_245_u64,
+            "query": "status: 401 | select count(*) as pv",
+            "line": 0,
+            "offset": 10,
+            "reverse": true,
+            "topic": "orders",
+            "power_sql": true
         }))
-        .expect("app log query should parse");
+        .expect("SLS log query should parse");
 
-        assert_eq!(query.app_name, "billing-api");
-        assert_eq!(query.environment.as_deref(), Some("prod"));
-        assert_eq!(query.trace_id.as_deref(), Some("trc_paid_summary_001"));
-        assert_eq!(query.keyword.as_deref(), Some("summary"));
-        assert_eq!(query.limit, 10);
-        assert_eq!(query.index_key, "app_logs:index:app_env:billing-api:prod");
+        assert_eq!(query.project, "sample-project");
+        assert_eq!(query.logstore, "sample-logstore");
+        assert_eq!(query.from, 1_627_268_185);
+        assert_eq!(query.to, 1_627_268_245);
+        assert_eq!(query.query, "status: 401 | select count(*) as pv");
+        assert_eq!(query.line, 0);
+        assert_eq!(query.offset, 10);
+        assert!(query.reverse);
+        assert_eq!(query.topic.as_deref(), Some("orders"));
+        assert!(query.power_sql);
 
-        let default_query = parse_app_log_query(&json!({
-            "app_name": "billing-api"
+        let default_query = parse_sls_log_query(&json!({
+            "project": "sample-project",
+            "logstore": "sample-logstore",
+            "from": 1_627_268_185_u64,
+            "to": 1_627_268_245_u64,
+            "query": "*"
         }))
-        .expect("app log query should parse with defaults");
-        assert_eq!(default_query.limit, DEFAULT_APP_LOG_LIMIT);
-        assert_eq!(default_query.index_key, "app_logs:index:app:billing-api");
+        .expect("SLS log query should parse with defaults");
+        assert_eq!(default_query.line, DEFAULT_SLS_LINE);
+        assert_eq!(default_query.offset, 0);
+        assert!(!default_query.reverse);
+        assert!(!default_query.power_sql);
+        assert_eq!(default_query.topic, None);
     }
 
     #[test]
-    fn rejects_invalid_app_log_query_arguments() {
+    fn rejects_invalid_sls_log_query_arguments() {
         assert_eq!(
-            parse_app_log_query(&json!({})).unwrap_err(),
-            "missing required argument: app_name"
+            parse_sls_log_query(&json!({})).unwrap_err(),
+            "missing required argument: project"
         );
         assert_eq!(
-            parse_app_log_query(&json!({
-                "app_name": "billing:api"
+            parse_sls_log_query(&json!({
+                "project": "sample-project",
+                "logstore": "sample-logstore",
+                "from": 1,
+                "to": 2,
+                "query": "",
             }))
             .unwrap_err(),
-            "app_name may contain only ASCII letters, numbers, '.', '-', and '_'"
+            "missing required argument: query"
         );
         assert_eq!(
-            parse_app_log_query(&json!({
-                "app_name": "billing-api",
-                "limit": 201
+            parse_sls_log_query(&json!({
+                "project": "sample-project",
+                "logstore": "sample-logstore",
+                "from": 2,
+                "to": 2,
+                "query": "*"
             }))
             .unwrap_err(),
-            "limit must be between 1 and 200"
+            "from must be less than to"
         );
         assert_eq!(
-            parse_app_log_query(&json!({
-                "app_name": "billing-api",
-                "since": "yesterday"
+            parse_sls_log_query(&json!({
+                "project": "sample-project",
+                "logstore": "sample-logstore",
+                "from": 1,
+                "to": 2,
+                "query": "*",
+                "line": 101
             }))
             .unwrap_err(),
-            "since must be a duration such as 15m or 1h"
+            "line must be between 0 and 100"
+        );
+        let query = "x".repeat(MAX_SLS_QUERY_BYTES + 1);
+        assert_eq!(
+            parse_sls_log_query(&json!({
+                "project": "sample-project",
+                "logstore": "sample-logstore",
+                "from": 1,
+                "to": 2,
+                "query": query
+            }))
+            .unwrap_err(),
+            "query must be 16384 bytes or fewer"
         );
     }
 
-    #[test]
-    fn filters_and_summarizes_app_log_entries() {
-        let query = parse_app_log_query(&json!({
-            "app_name": "billing-api",
-            "environment": "prod",
-            "trace_id": "trc_paid_summary_001",
-            "keyword": "12.00",
-            "limit": 10
-        }))
-        .expect("app log query should parse");
-        let entry = json!({
-            "id": "log_1001",
-            "timestamp": "2026-05-14T03:00:00Z",
-            "app_name": "billing-api",
-            "environment": "prod",
-            "level": "ERROR",
-            "trace_id": "trc_paid_summary_001",
-            "message": "paid summary returned 12.00 for customer order page",
-            "fields": {
-                "endpoint": "/api/orders/paid-summary",
-                "status_code": 200
+    #[tokio::test]
+    async fn sls_log_tool_errors_do_not_echo_query_text() {
+        let store = test_store().await;
+        let redis = test_redis();
+        let request = json!({
+            "params": {
+                "name": TOOL_QUERY_SLS_LOGS,
+                "arguments": {
+                    "project": "sample-project",
+                    "logstore": "sample-logstore",
+                    "from": 1,
+                    "to": 2,
+                    "query": "status: 401 | select secret from logs",
+                    "line": 101
+                }
             }
         });
 
-        assert!(app_log_entry_matches(&query, &entry));
-        let summary = summarize_app_log_entry(&entry).expect("entry should summarize");
-        assert_eq!(summary["id"], "log_1001");
-        assert_eq!(summary["traceId"], "trc_paid_summary_001");
-        assert_eq!(summary["fields"]["endpoint"], "/api/orders/paid-summary");
-        assert_eq!(summary.get("trace_id"), None);
+        let result = call_tool(&store, &redis, &request)
+            .await
+            .expect("tool call should return an invalid argument result");
+
+        assert_eq!(result["isError"], true);
+        assert_eq!(result["structuredContent"]["status"], "invalid_arguments");
+        assert_eq!(
+            result["structuredContent"]["receivedArguments"]["queryPresent"],
+            true
+        );
+        assert!(
+            result["structuredContent"]["receivedArguments"]
+                .get("query")
+                .is_none()
+        );
     }
 
     #[test]
-    fn formats_app_log_query_result() {
-        let query = parse_app_log_query(&json!({
-            "app_name": "billing-api",
-            "limit": 1
+    fn formats_sls_log_query_result() {
+        let query = parse_sls_log_query(&json!({
+            "project": "sample-project",
+            "logstore": "sample-logstore",
+            "from": 1_627_268_185_u64,
+            "to": 1_627_268_245_u64,
+            "query": "*",
+            "line": 1
         }))
-        .expect("app log query should parse");
-        let entry = summarize_app_log_entry(&json!({
-            "id": "log_1001",
-            "timestamp": "2026-05-14T03:00:00Z",
-            "app_name": "billing-api",
-            "environment": "prod",
-            "level": "ERROR",
-            "trace_id": "trc_paid_summary_001",
-            "message": "paid summary returned 12.00 for customer order page",
-            "fields": {
-                "endpoint": "/api/orders/paid-summary"
-            }
-        }))
-        .expect("entry should summarize");
-        let result = app_log_query_result(
+        .expect("SLS log query should parse");
+        let result = sls_log_query_result(
             control_plane::SourceRef::legacy_default(),
-            None,
-            query,
-            AppLogRead {
-                entries: vec![entry],
-                scanned_count: 2,
-                returned_count: 1,
-                truncated: true,
+            Some(7),
+            &query,
+            GetLogsV2Response {
+                progress: Some("Complete".to_string()),
+                count: 1,
+                logs: vec![json!({"message": "ok"})],
+                meta: json!({"progress": "Complete", "count": 1}),
             },
-            &json!({"app_name": "billing-api", "limit": 1}),
         );
 
         assert_eq!(result["isError"], false);
         assert_eq!(result["structuredContent"]["status"], "succeeded");
-        assert_eq!(result["structuredContent"]["returnedCount"], 1);
-        assert_eq!(result["structuredContent"]["truncated"], true);
-        assert_eq!(result["structuredContent"]["logs"][0]["id"], "log_1001");
+        assert_eq!(result["structuredContent"]["credentialVersion"], 7);
+        assert_eq!(result["structuredContent"]["project"], "sample-project");
+        assert_eq!(result["structuredContent"]["logstore"], "sample-logstore");
+        assert_eq!(result["structuredContent"]["queryPresent"], true);
+        assert_eq!(result["structuredContent"]["count"], 1);
+        assert_eq!(result["structuredContent"]["progress"], "Complete");
+        assert_eq!(result["structuredContent"]["logs"][0]["message"], "ok");
+    }
+
+    #[test]
+    fn builds_sls_rbac_scope_from_project_and_logstore() {
+        let scope = tool_authorization_scope(
+            TOOL_QUERY_SLS_LOGS,
+            &json!({
+                "source_name": "sls-main",
+                "project": "sample-project",
+                "logstore": "sample-logstore"
+            }),
+            &control_plane::AuthContext::legacy_admin(),
+        )
+        .expect("scope should parse")
+        .expect("SLS tool should have scope");
+
+        assert_eq!(scope.tool_name, TOOL_QUERY_SLS_LOGS);
+        assert_eq!(scope.action_name, "query");
+        assert_eq!(scope.resource_type.as_deref(), Some("sls_logstore"));
+        assert_eq!(
+            scope.resource_name.as_deref(),
+            Some("sample-project/sample-logstore")
+        );
     }
 
     #[tokio::test]
@@ -5787,17 +5714,11 @@ mod tests {
 
     #[test]
     fn matches_redis_key_allowlist_regex_against_entire_key() {
-        let regex = Regex::new("app_logs:entry:log_[0-9]+").unwrap();
+        let regex = Regex::new("demo:user:[0-9]+").unwrap();
 
-        assert!(regex_matches_entire_key(&regex, "app_logs:entry:log_1001"));
-        assert!(!regex_matches_entire_key(
-            &regex,
-            "xapp_logs:entry:log_1001"
-        ));
-        assert!(!regex_matches_entire_key(
-            &regex,
-            "app_logs:entry:log_1001:x"
-        ));
+        assert!(regex_matches_entire_key(&regex, "demo:user:1001"));
+        assert!(!regex_matches_entire_key(&regex, "xdemo:user:1001"));
+        assert!(!regex_matches_entire_key(&regex, "demo:user:1001:x"));
     }
 
     #[test]

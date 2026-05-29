@@ -86,7 +86,7 @@ fn initialize_result() -> Value {
             "version": env!("CARGO_PKG_VERSION"),
             "description": "Gateway exposing operational actions as MCP tools."
         },
-        "instructions": "Use tools/list to discover the actions visible to the authenticated Gateway API key and tools/call to invoke them. Source-backed tools accept an optional source_name. Data table queries use a registered MySQL source and require table policy. Redis key queries are read-only and require key policy. Kubernetes access is structured-tool-first and constrained by source, namespace, resource, and action policy; raw kubectl is hidden unless KUBERNETES_ENABLE_RAW_KUBECTL=true and should be reserved for break-glass diagnostics. Application log queries read bounded summaries from registered Redis log indexes."
+        "instructions": "Use tools/list to discover the actions visible to the authenticated Gateway API key and tools/call to invoke them. Source-backed tools accept an optional source_name. Data table queries use a registered MySQL source and require table policy. Redis key queries are read-only and require key policy. Kubernetes access is structured-tool-first and constrained by source, namespace, resource, and action policy; raw kubectl is hidden unless KUBERNETES_ENABLE_RAW_KUBECTL=true and should be reserved for break-glass diagnostics. SLS log queries use registered Alibaba Cloud Simple Log Service sources and require Logstore policy."
     })
 }
 
@@ -193,13 +193,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn validates_app_log_tool_arguments_without_touching_redis() {
+    async fn validates_sls_log_tool_arguments_without_touching_network() {
         let store = test_store().await;
         let redis = test_redis();
         let response = handle_json_rpc(
             &store,
             &redis,
-            r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"logs.query_app_logs","arguments":{"limit":20}}}"#,
+            r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"logs.query_sls_logs","arguments":{"line":20}}}"#,
         )
         .await
         .expect("tools/call should respond");
@@ -211,7 +211,7 @@ mod tests {
         );
         assert_eq!(
             response["result"]["structuredContent"]["action"],
-            actions::TOOL_QUERY_APP_LOGS
+            actions::TOOL_QUERY_SLS_LOGS
         );
     }
 

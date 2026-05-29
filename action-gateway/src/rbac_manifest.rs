@@ -413,7 +413,7 @@ impl ManifestSet {
                         "table",
                         "redis_key",
                         "kubernetes",
-                        "app_logs",
+                        "sls_logstore",
                         "audit_events",
                     ],
                     &format!("Role {} rule {index} resource", role.metadata.name),

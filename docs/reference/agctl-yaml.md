@@ -78,7 +78,7 @@ spec:
 | `table` | `data.query_table` |
 | `redis_key` | `redis.query_key` |
 | `kubernetes` | Kubernetes 查询工具 |
-| `app_logs` | `logs.query_app_logs` |
+| `sls_logstore` | `logs.query_sls_logs` |
 | `audit_events` | `audit.query_approval_events` |
 
 `resourceNames` 可以使用 `*` 表示通配资源名。

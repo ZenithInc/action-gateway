@@ -18,7 +18,7 @@
 - `GATEWAY_STORE_FILE` 指向 Gateway store。
 - `RPC_BIND_ADDR` 指定监听地址。
 - `RPC_TOKEN` 用于首次管理和 bootstrap。
-- `REDIS_URL` 作为默认 Redis client，也可作为应用日志查询的回退 Redis。
+- `REDIS_URL` 作为 `redis.query_key` 未配置 Redis source 时的默认 Redis client。
 
 ## Secret 和配置
 

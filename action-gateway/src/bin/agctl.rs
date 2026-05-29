@@ -910,7 +910,7 @@ fn infer_tool_name(resource: &str, verb: &str) -> Option<String> {
         }
         ("kubernetes", "logs") => Some("kubernetes.query_pod_logs".to_string()),
         ("kubernetes", "raw_read") => Some("kubernetes.kubectl_read".to_string()),
-        ("app_logs", "query") => Some("logs.query_app_logs".to_string()),
+        ("sls_logstore", "query") => Some("logs.query_sls_logs".to_string()),
         ("audit_events", "query") => Some("audit.query_approval_events".to_string()),
         _ => None,
     }

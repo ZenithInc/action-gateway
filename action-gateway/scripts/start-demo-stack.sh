@@ -162,7 +162,7 @@ const required = [
   "kubernetes.get_resource",
   "kubernetes.rollout_status",
   "kubernetes.query_pod_logs",
-  "logs.query_app_logs",
+  "logs.query_sls_logs",
   "audit.query_approval_events",
 ];
 if (!required.every((name) => names.includes(name))) process.exit(1);

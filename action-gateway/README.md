@@ -13,7 +13,7 @@
 | `GATEWAY_STORE_FILE` | JSON store 路径，保存 source、allowlist、principal、API key hash、policy 和审计摘要。 |
 | `RPC_BIND_ADDR` | 服务监听地址，例如 `0.0.0.0:8080`。 |
 | `RPC_TOKEN` | 初始管理 token，用于 bootstrap 管理操作。 |
-| `REDIS_URL` | 默认 Redis client，也可作为 `logs.query_app_logs` 的回退 Redis。 |
+| `REDIS_URL` | `redis.query_key` 未配置 Redis source 时的默认 Redis client。 |
 | `KUBERNETES_ENABLE_RAW_KUBECTL` | 是否暴露 raw kubectl 读取工具，默认关闭。 |
 
 最小启动示例：
@@ -33,7 +33,7 @@ export REDIS_URL='redis://:password@redis.internal:6379/0'
 
 store 顶层字段：
 
-- `sources`：下游 MySQL、Redis、Kubernetes 或日志 Redis source 配置和 credential。
+- `sources`：下游 MySQL、Redis、SLS、Kubernetes source 配置和 credential。
 - `tableAllowlist`：`data.query_table` 可访问表、列、脱敏和 `EXPLAIN` 阈值。
 - `redisKeyAllowlist`：`redis.query_key` 可访问 key 正则和返回大小限制。
 - `kubernetesResourceAllowlist`：Kubernetes namespace、resource 和 action 白名单。
@@ -45,6 +45,20 @@ store 顶层字段：
 - [快速开始](../docs/guide/getting-started.md)
 - [配置 Source 和 Allowlist](../docs/guide/configure-sources.md)
 - [部署建议](../docs/guide/deployment.md)
+
+## 诊断 CLI
+
+`sls-check` 用于验证 Alibaba Cloud SLS 凭证和 `GetLogsV2` 查询是否能正常响应。它从 `.env` 读取 `AccessKeyID`、`AccessKeySecret`、`SLS_ENDPOINT`、`SLS_PROJECT` 和 `SLS_LOGSTORE`，也支持通过命令行参数覆盖。
+
+```bash
+cargo run --bin sls-check -- \
+  --env-file ../.env \
+  --query 'content: "=======createOrderProcess=======data====="' \
+  --from 1779852171 \
+  --to 1779852172 \
+  --line 20 \
+  --show-logs
+```
 
 ## 开发者 demo
 

@@ -32,6 +32,23 @@
       "updatedAt": "2026-05-18T00:00:00Z"
     },
     {
+      "id": "src_sls-main_sls",
+      "sourceName": "sls-main",
+      "sourceType": "sls",
+      "displayName": "Main SLS",
+      "config": {
+        "endpoint": "cn-hangzhou.log.aliyuncs.com"
+      },
+      "credential": {
+        "accessKeyId": "LTAI...",
+        "accessKeySecret": "<secret>"
+      },
+      "credentialVersion": 1,
+      "enabled": true,
+      "createdAt": "2026-05-18T00:00:00Z",
+      "updatedAt": "2026-05-18T00:00:00Z"
+    },
+    {
       "id": "src_default_kubernetes",
       "sourceName": "default",
       "sourceType": "kubernetes",

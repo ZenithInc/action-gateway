@@ -86,7 +86,7 @@ jobs:
         shell: bash
         working-directory: action-gateway
         run: |
-          cargo build --release --locked --target "${{ matrix.target }}" --bin action-gateway-v2 --bin agctl
+          cargo build --release --locked --target "${{ matrix.target }}" --bin action-gateway-v2 --bin agctl --bin sls-check
 
       - name: Package binaries
         if: runner.os != 'Windows'
@@ -100,6 +100,7 @@ jobs:
 
           cp "action-gateway/target/${{ matrix.target }}/release/action-gateway-v2" "${staging}/"
           cp "action-gateway/target/${{ matrix.target }}/release/agctl" "${staging}/"
+          cp "action-gateway/target/${{ matrix.target }}/release/sls-check" "${staging}/"
           cp README.md README.zh-CN.md LICENSE "${staging}/"
           cp action-gateway/example.yaml action-gateway/gateway-store.example.json "${staging}/"
 
@@ -122,6 +123,7 @@ jobs:
 
           Copy-Item "action-gateway/target/${{ matrix.target }}/release/action-gateway-v2${{ matrix.exe_ext }}" "$staging/"
           Copy-Item "action-gateway/target/${{ matrix.target }}/release/agctl${{ matrix.exe_ext }}" "$staging/"
+          Copy-Item "action-gateway/target/${{ matrix.target }}/release/sls-check${{ matrix.exe_ext }}" "$staging/"
           Copy-Item "README.md", "README.zh-CN.md", "LICENSE" "$staging/"
           Copy-Item "action-gateway/example.yaml", "action-gateway/gateway-store.example.json" "$staging/"
 

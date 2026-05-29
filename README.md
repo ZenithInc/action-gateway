@@ -1,13 +1,13 @@
 # Action Gateway
 
-Action Gateway is a controlled MCP gateway that exposes MySQL, Redis, Kubernetes, application-log, and audit-query capabilities through policy-driven tools.
+Action Gateway is a controlled MCP gateway that exposes MySQL, Redis, Kubernetes, Alibaba Cloud SLS log, and audit-query capabilities through policy-driven tools.
 
 It is designed to sit between agents and internal systems. Agents receive a Gateway API key; they do not receive database credentials, Redis credentials, or kubeconfig files.
 
 ## Capabilities
 
-- **Controlled tools**: read-focused tools for MySQL, Redis, Kubernetes, application logs, and audit events.
-- **Source isolation**: each MySQL, Redis, Kubernetes, or log Redis target is configured as a separate source.
+- **Controlled tools**: read-focused tools for MySQL, Redis, Kubernetes, SLS logs, and audit events.
+- **Source isolation**: each MySQL, Redis, SLS, or Kubernetes target is configured as a separate source.
 - **Allowlist gates**: MySQL tables, Redis keys, Kubernetes namespaces/resources/actions all require explicit allowlists.
 - **Identity and authorization**: principals, roles, role bindings, API keys, and access policies scope each caller.
 - **Audit summaries**: tool calls are recorded without storing full business rows, raw log bodies, or Redis values.
@@ -18,7 +18,7 @@ The recommended path for users is:
 
 1. Download the release package for your platform from GitHub Releases, or use the matching container image.
 2. Prepare a Gateway store and manage it as a secret.
-3. Configure real MySQL, Redis, Kubernetes, or log Redis sources in the store.
+3. Configure real MySQL, Redis, SLS, or Kubernetes sources in the store.
 4. Configure `tableAllowlist`, `redisKeyAllowlist`, or `kubernetesResourceAllowlist`.
 5. Start `action-gateway`.
 6. Use `agctl` to create principals, role bindings, and API keys for callers.
@@ -58,6 +58,21 @@ Create `/etc/action-gateway/gateway-store.json`:
       "config": {},
       "credential": {
         "url": "redis://:password@redis.internal:6379/0"
+      },
+      "credentialVersion": 1,
+      "enabled": true
+    },
+    {
+      "id": "src_sls-main_sls",
+      "sourceName": "sls-main",
+      "sourceType": "sls",
+      "displayName": "Main SLS",
+      "config": {
+        "endpoint": "cn-hangzhou.log.aliyuncs.com"
+      },
+      "credential": {
+        "accessKeyId": "LTAI...",
+        "accessKeySecret": "<secret>"
       },
       "credentialVersion": 1,
       "enabled": true
@@ -109,7 +124,7 @@ export REDIS_URL='redis://:password@redis.internal:6379/0'
 | `kubernetes.get_resource` | Read an allowlisted Kubernetes resource. |
 | `kubernetes.query_pod_logs` | Query allowlisted Pod logs. |
 | `kubernetes.rollout_status` | Query Deployment / StatefulSet / DaemonSet rollout status or history. |
-| `logs.query_app_logs` | Query application log summaries from Redis log indexes. |
+| `logs.query_sls_logs` | Query Alibaba Cloud SLS Logstore logs. |
 | `audit.query_events` | Query Gateway audit event summaries. |
 
 ## Documentation

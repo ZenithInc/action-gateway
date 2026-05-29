@@ -1,6 +1,6 @@
 # 配置 Source 和 Allowlist
 
-本页说明如何为已部署的 Action Gateway 配置真实 MySQL、Redis、Kubernetes 或日志 Redis source。完成后，再用 [agctl](/guide/agctl) 给调用方授予权限。
+本页说明如何为已部署的 Action Gateway 配置真实 MySQL、Redis、SLS 或 Kubernetes source。完成后，再用 [agctl](/guide/agctl) 给调用方授予权限。
 
 ## 配置顺序
 
@@ -150,26 +150,70 @@ redis://username:password@redis.internal:6379/0
 
 `keyPattern` 是正则表达式。建议从非常窄的前缀开始，例如只开放 `orders:debug:*`，不要直接开放 `.*`。
 
-## 配置应用日志 source
+## 配置 SLS 日志 source
 
-`logs.query_app_logs` 读取 Redis 中的 `app_logs:*` 索引。你可以配置专用日志 Redis：
+`logs.query_sls_logs` 使用阿里云 SLS `GetLogsV2` 查询 Logstore。`sourceType: "sls"` 提供区域 endpoint 和 AccessKey；调用时再传入 `project`、`logstore`、时间范围和查询语句。
 
 ```json
 {
-  "id": "src_default_logs_redis",
-  "sourceName": "default",
-  "sourceType": "logs_redis",
-  "displayName": "Application Logs Redis",
-  "config": {},
+  "id": "src_sls-main_sls",
+  "sourceName": "sls-main",
+  "sourceType": "sls",
+  "displayName": "Main SLS",
+  "config": {
+    "endpoint": "cn-hangzhou.log.aliyuncs.com"
+  },
   "credential": {
-    "url": "redis://:password@logs-redis.internal:6379/0"
+    "accessKeyId": "LTAI...",
+    "accessKeySecret": "<secret>",
+    "securityToken": "<optional-sts-token>"
   },
   "credentialVersion": 1,
   "enabled": true
 }
 ```
 
-如果没有配置 `logs_redis` source，Gateway 会使用启动时的 `REDIS_URL` client。
+`credentialVersion` 会进入工具响应和审计摘要。Gateway 不会把 AccessKey 或原始查询结果 payload 写入审计。
+
+### 用 `sls-check` 验证 SLS
+
+发布包和源码中都包含 `sls-check` 诊断 CLI，用于在接入 Gateway 前确认 SLS 凭证、endpoint、project、logstore 和查询语句能正常响应。
+
+本地 `.env` 可以使用这些 key：
+
+```bash
+AccessKeyID=LTAI...
+AccessKeySecret=<secret>
+SLS_ENDPOINT=cn-shanghai.log.aliyuncs.com
+SLS_PROJECT=sample-project
+SLS_LOGSTORE=app-logstore
+```
+
+源码环境中可直接运行：
+
+```bash
+cargo run --bin sls-check -- \
+  --env-file ../.env \
+  --query 'content: "=======createOrderProcess=======data====="' \
+  --from 1779852171 \
+  --to 1779852172 \
+  --line 20 \
+  --show-logs
+```
+
+发布包中使用二进制：
+
+```bash
+./sls-check \
+  --env-file .env \
+  --query 'content: "=======createOrderProcess=======data====="' \
+  --from 1779852171 \
+  --to 1779852172 \
+  --line 20 \
+  --show-logs
+```
+
+`from` 和 `to` 使用 Unix 秒，且必须满足 `from < to`。如果业务日志按北京时间描述，先按 UTC+8 换算时间戳；例如 `2026-05-27 11:22:51` 北京时间对应 `1779852171`。默认响应只返回摘要，调试时加 `--show-logs` 才会输出日志正文。
 
 ## 配置 Kubernetes source
 

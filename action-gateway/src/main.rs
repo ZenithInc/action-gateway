@@ -3,6 +3,7 @@ mod admin;
 mod audit;
 mod control_plane;
 mod mcp;
+mod sls;
 
 use std::{convert::Infallible, net::SocketAddr};
 

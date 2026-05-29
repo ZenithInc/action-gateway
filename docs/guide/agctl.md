@@ -163,14 +163,14 @@ rules:
     effect: allow
 ```
 
-允许查询某个应用的日志：
+允许查询某个 SLS Logstore：
 
 ```yaml
 rules:
-  - tools: ["logs.query_app_logs"]
+  - tools: ["logs.query_sls_logs"]
     verbs: ["query"]
-    resources: ["app_logs"]
-    resourceNames: ["billing-api"]
+    resources: ["sls_logstore"]
+    resourceNames: ["sample-project/app-logstore"]
     effect: allow
 ```
 

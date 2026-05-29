@@ -56,10 +56,31 @@ GATEWAY_STORE_FILE=/etc/action-gateway/gateway-store.json /opt/action-gateway/bi
 | --- | --- |
 | `mysql` | `url`、`connectionUrl`、`databaseUrl` |
 | `redis` | `url`、`connectionUrl`、`redisUrl` |
-| `logs_redis` | `url`、`connectionUrl`、`redisUrl` |
+| `sls` | `config.endpoint`；`credential.accessKeyId`、`credential.accessKeySecret`、可选 `credential.securityToken` |
 | `kubernetes` | `kubeconfig`、`kubeconfigPath`、`kubeconfig_path`、`kubeconfigFile` |
 
 `credentialVersion` 会出现在工具响应和审计中，建议每次轮换 credential 时递增。
+
+SLS source 示例：
+
+```json
+{
+  "id": "src_sls-main_sls",
+  "sourceName": "sls-main",
+  "sourceType": "sls",
+  "displayName": "Main SLS",
+  "config": {
+    "endpoint": "cn-hangzhou.log.aliyuncs.com"
+  },
+  "credential": {
+    "accessKeyId": "LTAI...",
+    "accessKeySecret": "<secret>",
+    "securityToken": "<optional-sts-token>"
+  },
+  "credentialVersion": 1,
+  "enabled": true
+}
+```
 
 ## Table Allowlist
 

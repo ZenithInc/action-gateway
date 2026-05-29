@@ -106,7 +106,7 @@ Array.isArray(data.result?.tools) &&
   "kubernetes.get_resource",
   "kubernetes.rollout_status",
   "kubernetes.query_pod_logs",
-  "logs.query_app_logs",
+  "logs.query_sls_logs",
   "audit.query_approval_events",
 ].every((name) => data.result.tools.some((tool) => tool.name === name)) &&
 !data.result.tools.some((tool) => tool.name === "kubernetes.kubectl_read")
@@ -115,20 +115,6 @@ Array.isArray(data.result?.tools) &&
 echo "Smoke checking Redis key query..."
 redis_file="$(mcp_request redis '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"redis.query_key","arguments":{"key":"demo:user:1","limit":10}}}')"
 assert_json "redis.query_key" "${redis_file}" 'data.result?.isError === false && data.result.structuredContent?.status === "succeeded" && data.result.structuredContent.exists === true'
-
-echo "Smoke checking application log query..."
-logs_file="$(mcp_request logs '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"logs.query_app_logs","arguments":{"app_name":"billing-api","environment":"prod","keyword":"12.00","limit":5}}}')"
-assert_json "logs.query_app_logs" "${logs_file}" 'data.result?.isError === false && data.result.structuredContent?.status === "succeeded" && data.result.structuredContent.returnedCount >= 1'
-
-echo "Smoke checking application log trace and truncation filters..."
-logs_trace_file="$(mcp_request logs_trace '{"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"logs.query_app_logs","arguments":{"app_name":"billing-api","trace_id":"trc_paid_summary_001","limit":10}}}')"
-assert_json "logs.query_app_logs trace_id" "${logs_trace_file}" 'data.result?.isError === false && data.result.structuredContent?.status === "succeeded" && data.result.structuredContent.returnedCount >= 2'
-
-logs_limit_file="$(mcp_request logs_limit '{"jsonrpc":"2.0","id":42,"method":"tools/call","params":{"name":"logs.query_app_logs","arguments":{"app_name":"billing-api","limit":1}}}')"
-assert_json "logs.query_app_logs limit" "${logs_limit_file}" 'data.result?.isError === false && data.result.structuredContent?.status === "succeeded" && data.result.structuredContent.returnedCount === 1 && data.result.structuredContent.truncated === true'
-
-logs_missing_file="$(mcp_request logs_missing '{"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"logs.query_app_logs","arguments":{"app_name":"missing-api","limit":5}}}')"
-assert_json "logs.query_app_logs missing index" "${logs_missing_file}" 'data.result?.isError === true && data.result.structuredContent?.status === "not_allowed"'
 
 echo "Smoke checking audit query..."
 audit_file="$(mcp_request audit '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"audit.query_approval_events","arguments":{"actor_id":"smoke","limit":20}}}')"

@@ -93,7 +93,27 @@ Redis source：
 }
 ```
 
-`data.query_table` 使用 `sourceType: "mysql"`；`redis.query_key` 使用 `sourceType: "redis"`；`logs.query_app_logs` 可以使用 `sourceType: "logs_redis"`，未配置时会回退到 Gateway 启动时的 `REDIS_URL`。
+SLS source：
+
+```json
+{
+  "id": "src_sls-main_sls",
+  "sourceName": "sls-main",
+  "sourceType": "sls",
+  "displayName": "Main SLS",
+  "config": {
+    "endpoint": "cn-hangzhou.log.aliyuncs.com"
+  },
+  "credential": {
+    "accessKeyId": "LTAI...",
+    "accessKeySecret": "<secret>"
+  },
+  "credentialVersion": 1,
+  "enabled": true
+}
+```
+
+`data.query_table` 使用 `sourceType: "mysql"`；`redis.query_key` 使用 `sourceType: "redis"`；`logs.query_sls_logs` 使用 `sourceType: "sls"`。
 
 ## 配置 allowlist
 
@@ -129,7 +149,7 @@ Redis key 白名单：
 
 ## 启动 Gateway
 
-至少需要指定 store 文件、监听地址和一个管理 token。`REDIS_URL` 是 Gateway 的默认 Redis client，也可作为应用日志查询的回退 Redis。
+至少需要指定 store 文件、监听地址和一个管理 token。`REDIS_URL` 只作为 `redis.query_key` 在未配置 Redis source 时的默认 Redis client。
 
 ```bash
 export GATEWAY_STORE_FILE=/etc/action-gateway/gateway-store.json
@@ -241,6 +261,6 @@ curl -s http://127.0.0.1:8080/mcp \
 
 ## 下一步
 
-- [配置 Source 和 Allowlist](/guide/configure-sources)：接入更多 MySQL、Redis、Kubernetes 或日志 Redis。
+- [配置 Source 和 Allowlist](/guide/configure-sources)：接入更多 MySQL、Redis、SLS 或 Kubernetes。
 - [部署建议](/guide/deployment)：把 Gateway 部署到开发、测试或生产环境。
 - [接入 MCP Client](/guide/mcp-client)：把 API Key 配置到 Codex 或其他 MCP Client。

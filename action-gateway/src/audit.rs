@@ -523,20 +523,31 @@ fn request_summary(request: &Value, action_name: Option<&str>) -> Value {
                 arguments.get("tail_lines").cloned(),
             );
         }
-        Some("logs.query_app_logs") => {
-            insert_optional_value(&mut summary, "appName", arguments.get("app_name").cloned());
+        Some("logs.query_sls_logs") => {
             insert_optional_value(
                 &mut summary,
-                "environment",
-                arguments.get("environment").cloned(),
+                "sourceName",
+                string_argument(arguments, "source_name")
+                    .map(Value::from)
+                    .or_else(|| Some(json!("default"))),
             );
-            insert_optional_value(&mut summary, "traceId", arguments.get("trace_id").cloned());
+            insert_optional_value(&mut summary, "project", arguments.get("project").cloned());
+            insert_optional_value(&mut summary, "logstore", arguments.get("logstore").cloned());
             summary.insert(
-                "keywordPresent".to_string(),
-                Value::Bool(arguments.get("keyword").is_some()),
+                "queryPresent".to_string(),
+                Value::Bool(arguments.get("query").is_some()),
             );
-            insert_optional_value(&mut summary, "since", arguments.get("since").cloned());
-            insert_optional_value(&mut summary, "limit", arguments.get("limit").cloned());
+            insert_optional_value(&mut summary, "from", arguments.get("from").cloned());
+            insert_optional_value(&mut summary, "to", arguments.get("to").cloned());
+            insert_optional_value(&mut summary, "line", arguments.get("line").cloned());
+            insert_optional_value(&mut summary, "offset", arguments.get("offset").cloned());
+            insert_optional_value(&mut summary, "reverse", arguments.get("reverse").cloned());
+            insert_optional_value(&mut summary, "topic", arguments.get("topic").cloned());
+            insert_optional_value(
+                &mut summary,
+                "powerSql",
+                arguments.get("power_sql").cloned(),
+            );
         }
         Some(TOOL_QUERY_APPROVAL_AUDIT_EVENTS) => {
             for field in [
@@ -624,11 +635,18 @@ fn result_summary(response: &Value) -> Value {
         "logsTruncated",
         "outputTruncated",
         "eventCount",
-        "appName",
-        "environment",
-        "traceId",
-        "keywordPresent",
-        "scannedCount",
+        "project",
+        "logstore",
+        "queryPresent",
+        "from",
+        "to",
+        "line",
+        "offset",
+        "reverse",
+        "count",
+        "progress",
+        "topic",
+        "powerSql",
         "authorization",
     ] {
         insert_optional_value(&mut summary, field, structured.get(field).cloned());
@@ -728,7 +746,12 @@ fn subject_id(action_name: Option<&str>, request_summary: &Value) -> Option<Stri
                 "logs",
             );
         }
-        Some("logs.query_app_logs") => "appName",
+        Some("logs.query_sls_logs") => {
+            return sls_subject(
+                request_summary.get("project").and_then(Value::as_str),
+                request_summary.get("logstore").and_then(Value::as_str),
+            );
+        }
         Some("kubernetes.kubectl_read") => {
             return kubernetes_subject_from_raw_args(request_summary.get("args"));
         }
@@ -790,6 +813,19 @@ fn kubernetes_subject(
             truncate_subject_part(&normalize_kubernetes_resource_name(resource)),
             truncate_subject_part(name),
             truncate_subject_part(action)
+        )
+        .chars()
+        .take(255)
+        .collect(),
+    )
+}
+
+fn sls_subject(project: Option<&str>, logstore: Option<&str>) -> Option<String> {
+    Some(
+        format!(
+            "{}/{}",
+            truncate_subject_part(project?),
+            truncate_subject_part(logstore?)
         )
         .chars()
         .take(255)
@@ -1381,18 +1417,24 @@ mod tests {
     }
 
     #[test]
-    fn summarizes_app_log_tool_calls_without_log_payloads() {
+    fn summarizes_sls_log_tool_calls_without_log_payloads_or_query_text() {
         let request = json!({
             "jsonrpc": "2.0",
             "id": 10,
             "method": "tools/call",
             "params": {
-                "name": "logs.query_app_logs",
+                "name": "logs.query_sls_logs",
                 "arguments": {
-                    "app_name": "billing-api",
-                    "environment": "prod",
-                    "keyword": "12.00",
-                    "limit": 5
+                    "source_name": "sls-main",
+                    "project": "sample-project",
+                    "logstore": "app-logstore",
+                    "from": 1627268185,
+                    "to": 1627268245,
+                    "query": "status: 401 | select count(*) as pv",
+                    "line": 0,
+                    "offset": 0,
+                    "reverse": true,
+                    "power_sql": true
                 }
             }
         });
@@ -1402,15 +1444,21 @@ mod tests {
             "result": {
                 "structuredContent": {
                     "status": "succeeded",
-                    "action": "logs.query_app_logs",
-                    "appName": "billing-api",
-                    "environment": "prod",
-                    "keywordPresent": true,
-                    "returnedCount": 1,
-                    "truncated": false,
+                    "action": "logs.query_sls_logs",
+                    "sourceName": "sls-main",
+                    "credentialVersion": 3,
+                    "project": "sample-project",
+                    "logstore": "app-logstore",
+                    "queryPresent": true,
+                    "from": 1627268185,
+                    "to": 1627268245,
+                    "line": 0,
+                    "offset": 0,
+                    "reverse": true,
+                    "count": 1,
+                    "progress": "Complete",
                     "logs": [
                         {
-                            "id": "log_1001",
                             "message": "paid summary returned 12.00 for customer order page"
                         }
                     ]
@@ -1423,10 +1471,19 @@ mod tests {
             .expect("tool call should produce an audit event");
         let result_summary = event.result_summary.unwrap();
 
-        assert_eq!(event.subject_id.as_deref(), Some("billing-api"));
-        assert_eq!(event.request_summary["keywordPresent"], true);
-        assert_eq!(result_summary["returnedCount"], 1);
-        assert_eq!(result_summary["appName"], "billing-api");
+        assert_eq!(
+            event.subject_id.as_deref(),
+            Some("sample-project/app-logstore")
+        );
+        assert_eq!(event.request_summary["sourceName"], "sls-main");
+        assert_eq!(event.request_summary["project"], "sample-project");
+        assert_eq!(event.request_summary["logstore"], "app-logstore");
+        assert_eq!(event.request_summary["queryPresent"], true);
+        assert!(event.request_summary.get("query").is_none());
+        assert_eq!(result_summary["count"], 1);
+        assert_eq!(result_summary["progress"], "Complete");
+        assert_eq!(result_summary["project"], "sample-project");
+        assert_eq!(result_summary["logstore"], "app-logstore");
         assert!(result_summary.get("logs").is_none());
         assert!(result_summary.get("message").is_none());
     }

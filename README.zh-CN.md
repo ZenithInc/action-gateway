@@ -1,13 +1,13 @@
 # Action Gateway
 
-Action Gateway 是一个面向 Agent 的受控 MCP 网关，用 policy 驱动的工具安全暴露 MySQL、Redis、Kubernetes、应用日志和审计查询能力。
+Action Gateway 是一个面向 Agent 的受控 MCP 网关，用 policy 驱动的工具安全暴露 MySQL、Redis、Kubernetes、SLS 日志和审计查询能力。
 
 它适合放在 Agent 和内部系统之间：Agent 只拿到 Gateway API Key，不直接接触数据库账号、Redis 账号或 kubeconfig。
 
 ## 主要能力
 
-- **受控工具集**：提供偏只读的 MySQL、Redis、Kubernetes、应用日志和审计查询能力。
-- **Source 隔离**：每个 MySQL、Redis、Kubernetes 或日志 Redis 都通过独立 source 配置。
+- **受控工具集**：提供偏只读的 MySQL、Redis、Kubernetes、SLS 日志和审计查询能力。
+- **Source 隔离**：每个 MySQL、Redis、SLS 或 Kubernetes 都通过独立 source 配置。
 - **Allowlist 门禁**：MySQL 表、Redis key、Kubernetes namespace/resource/action 都需要显式白名单。
 - **身份与授权**：通过 principal、role、role binding、API Key 和 access policy 控制调用范围。
 - **审计记录**：记录工具调用摘要，避免把完整业务数据、日志正文或 Redis 值写入审计。
@@ -18,7 +18,7 @@ Action Gateway 是一个面向 Agent 的受控 MCP 网关，用 policy 驱动的
 
 1. 从 GitHub Release 下载与你的系统匹配的发布包，或使用对应版本的容器镜像。
 2. 准备 Gateway store，并把它当作 secret 管理。
-3. 在 store 中配置真实 MySQL、Redis、Kubernetes 或日志 Redis source。
+3. 在 store 中配置真实 MySQL、Redis、SLS 或 Kubernetes source。
 4. 配置 `tableAllowlist`、`redisKeyAllowlist` 或 `kubernetesResourceAllowlist`。
 5. 启动 `action-gateway`。
 6. 用 `agctl` 给调用方创建 principal、role binding 和 API Key。
@@ -58,6 +58,21 @@ Action Gateway 是一个面向 Agent 的受控 MCP 网关，用 policy 驱动的
       "config": {},
       "credential": {
         "url": "redis://:password@redis.internal:6379/0"
+      },
+      "credentialVersion": 1,
+      "enabled": true
+    },
+    {
+      "id": "src_sls-main_sls",
+      "sourceName": "sls-main",
+      "sourceType": "sls",
+      "displayName": "Main SLS",
+      "config": {
+        "endpoint": "cn-hangzhou.log.aliyuncs.com"
+      },
+      "credential": {
+        "accessKeyId": "LTAI...",
+        "accessKeySecret": "<secret>"
       },
       "credentialVersion": 1,
       "enabled": true
@@ -109,7 +124,7 @@ export REDIS_URL='redis://:password@redis.internal:6379/0'
 | `kubernetes.get_resource` | 查询 allowlist 内的 Kubernetes 单个资源。 |
 | `kubernetes.query_pod_logs` | 查询 allowlist 内的 Pod 日志。 |
 | `kubernetes.rollout_status` | 查询 Deployment / StatefulSet / DaemonSet rollout 状态或历史。 |
-| `logs.query_app_logs` | 从 Redis 日志索引查询应用日志摘要。 |
+| `logs.query_sls_logs` | 查询阿里云 SLS Logstore 日志。 |
 | `audit.query_events` | 查询 Gateway 审计事件摘要。 |
 
 ## 文档
